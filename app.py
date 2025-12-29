@@ -4,24 +4,28 @@ import os
 from datetime import datetime
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="CRM Med Mais - Pro", layout="wide")
-
-# ===============================
-# 1. CARREGAMENTO E LIMPEZA
-# ===============================
 @st.cache_data
 def carregar_dados():
     try:
-        # Caminhos relativos para funcionamento no Streamlit Cloud
+        # Tenta ler os arquivos pegando sempre a PRIMEIRA ABA (evita erro de nome de aba)
         vendas = pd.read_excel("dados/CONSULTA VENDEDORES.xlsx")
         produtos = pd.read_excel("dados/Produtos_Agrupados_Completos_conciliados.xlsx")
         precos = pd.read_excel("dados/TABELAS_NE.xlsx")
         
-        # Padronização de IDs (Garante que códigos batam entre planilhas)
+        # PADRONIZAÇÃO AUTOMÁTICA DE COLUNAS
+        for df in [produtos, precos]:
+            df.columns = df.columns.str.strip() # Remove espaços
+            # Se não achar 'ID_COD', procura por 'CODIGO' ou 'CÓDIGO' e renomeia
+            colunas_possiveis = ['ID_COD', 'CODIGO', 'Código', 'id_cod', 'COD']
+            for col in colunas_possiveis:
+                if col in df.columns:
+                    df.rename(columns={col: 'ID_COD'}, inplace=True)
+                    break
+        
+        # Limpeza de códigos para texto (Garante o vínculo dos Pedidos)
         produtos['ID_COD'] = produtos['ID_COD'].astype(str).str.replace('.0', '', regex=False).str.strip()
         precos['ID_COD'] = precos['ID_COD'].astype(str).str.replace('.0', '', regex=False).str.strip()
         
-        # Tratamento de Nulos
         vendas['RazaoSocial'] = vendas['RazaoSocial'].fillna("NÃO IDENTIFICADO").astype(str)
         vendas['Vendedor'] = vendas['Vendedor'].fillna("SEM VENDEDOR").astype(str)
         vendas['Estado'] = vendas['Estado'].fillna("S/I").astype(str)
@@ -29,7 +33,7 @@ def carregar_dados():
         
         return vendas, produtos, precos
     except Exception as e:
-        st.error(f"Erro ao carregar arquivos: {e}")
+        st.error(f"Erro detalhado: {e}")
         return None, None, None
 
 vendas, produtos, precos = carregar_dados()
@@ -196,3 +200,4 @@ if vendas is not None:
             st.dataframe(final, use_container_width=True)
 else:
     st.error("Arquivos não encontrados.")
+
