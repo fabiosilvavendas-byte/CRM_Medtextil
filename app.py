@@ -20,14 +20,21 @@ def carregar_dados():
         vendas['DataEmissao'] = pd.to_datetime(vendas['DataEmissao'], errors='coerce')
         vendas = vendas.dropna(subset=['DataEmissao'])
         
-        # Limpeza de IDs para cruzamento
-        produtos['ID_COD'] = produtos['ID_COD'].astype(str).str.replace('.0', '', regex=False).strip()
-        precos['ID_COD'] = precos['ID_COD'].astype(str).str.replace('.0', '', regex=False).strip()
-        
-        return vendas, produtos, precos
-    except Exception as e:
-        st.error(f"Erro ao carregar arquivos: {e}. Verifique a pasta 'dados' no GitHub.")
-        return None, None, None
+       # Limpeza de IDs para cruzamento (Código Robusto)
+        for df in [produtos, precos]:
+            # Remove espaços em branco dos nomes das colunas
+            df.columns = df.columns.str.strip()
+            
+            # Se 'ID_COD' não existir, tenta renomear variações comuns
+            if 'ID_COD' not in df.columns:
+                if 'CODIGO' in df.columns: df.rename(columns={'CODIGO': 'ID_COD'}, inplace=True)
+                elif 'Código' in df.columns: df.rename(columns={'Código': 'ID_COD'}, inplace=True)
+
+        # Agora tenta formatar, apenas se a coluna existir
+        if 'ID_COD' in produtos.columns:
+            produtos['ID_COD'] = produtos['ID_COD'].astype(str).str.replace('.0', '', regex=False).strip()
+        if 'ID_COD' in precos.columns:
+            precos['ID_COD'] = precos['ID_COD'].astype(str).str.replace('.0', '', regex=False).strip()
 
 vendas, produtos, precos = carregar_dados()
 
@@ -124,3 +131,4 @@ if vendas is not None:
 
 else:
     st.info("Configure os arquivos no GitHub para ativar o sistema.")
+
