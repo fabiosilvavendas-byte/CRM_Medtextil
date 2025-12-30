@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 
 # 1. CONFIGURAÇÃO DA PÁGINA (Mantendo o ícone para o app no iPhone)
 st.set_page_config(
-    page_title="CRM Med Mais - Pro", 
+    page_title="CRM MedTextil - Pro", 
     layout="wide", 
     page_icon="🛡️" # Aqui você pode trocar pelo link da sua logo se preferir
 )
@@ -325,4 +325,5 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
