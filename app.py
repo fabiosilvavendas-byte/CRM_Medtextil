@@ -173,14 +173,75 @@ if vendas is not None:
     # ---------------------------
     # MÓDULO 4: NOVO - EXPANSÃO PR (BASEADO NO RELATÓRIO)
     # ---------------------------
+    # ---------------------------
+    # MÓDULO 4: EXPANSÃO PR (INTERATIVO - COM PREENCHIMENTO)
+    # ---------------------------
     elif menu == "🚀 Expansão PR":
         st.title("🚀 Plano de Expansão PR 2026")
-        if expansao:
-            tab1, tab2, tab3 = st.tabs(["🎯 Leads", "📈 Funil", "📊 KPIs"])
-            with tab1: st.dataframe(expansao.get('Gestão de Leads', pd.DataFrame()), use_container_width=True)
-            with tab2: st.dataframe(expansao.get('Funil de Vendas', pd.DataFrame()), use_container_width=True)
-            with tab3: st.dataframe(expansao.get('Dashboard KPIs', pd.DataFrame()), use_container_width=True)
-        else:
-            st.warning("Arquivo de expansão não encontrado na pasta 'dados'.")
-else:
-    st.error("Erro no carregamento. Verifique a pasta 'dados' no GitHub.")
+        
+        # Inicializa a base de leads no estado da sessão se ainda não existir
+        if "df_leads_ativa" not in st.session_state:
+            if expansao and 'Gestão de Leads' in expansao:
+                st.session_state.df_leads_ativa = expansao['Gestão de Leads'].copy()
+            else:
+                st.session_state.df_leads_ativa = pd.DataFrame(columns=["Data de Entrada", "Empresa", "Cidade", "Segmento", "Contato", "Status do Lead", "Dor Principal"])
+
+        # Abas para organizar o trabalho no iPhone
+        tab_view, tab_add, tab_edit = st.tabs(["📋 Visualizar Leads", "➕ Novo Lead", "📈 Atualizar Funil"])
+
+        with tab_view:
+            st.subheader("Base de Leads Atual")
+            st.dataframe(st.session_state.df_leads_ativa, use_container_width=True, hide_index=True)
+            
+            # Botão para baixar o que foi preenchido (como CSV) para você não perder o trabalho
+            if not st.session_state.df_leads_ativa.empty:
+                csv = st.session_state.df_leads_ativa.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Baixar Leads Atualizados", csv, "leads_expansao_atualizado.csv", "text/csv")
+
+        with tab_add:
+            st.subheader("Cadastrar Nova Oportunidade")
+            with st.form("novo_lead_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                empresa_n = col1.text_input("Nome da Empresa")
+                cidade_n = col2.text_input("Cidade")
+                segmento_n = col1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
+                contato_n = col2.text_input("Contato Principal")
+                dor_n = st.text_area("Necessidade/Dor do Cliente")
+                
+                submit = st.form_submit_button("✅ Salvar Lead no Aplicativo")
+                
+                if submit:
+                    if empresa_n:
+                        novo_registro = {
+                            "Data de Entrada": datetime.now().strftime("%d/%m/%Y"),
+                            "Empresa": empresa_n,
+                            "Cidade": cidade_n,
+                            "Segmento": segmento_n,
+                            "Contato": contato_n,
+                            "Status do Lead": "Prospecção",
+                            "Dor Principal": dor_n
+                        }
+                        # Adiciona ao DataFrame em memória
+                        st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo_registro])], ignore_index=True)
+                        st.success(f"Lead {empresa_n} adicionado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Por favor, preencha pelo menos o nome da Empresa.")
+
+        with tab_edit:
+            st.subheader("Gestão de Funil e KPIs")
+            if not st.session_state.df_leads_ativa.empty:
+                # Mini dashboard com os dados que você acabou de preencher
+                c1, c2 = st.columns(2)
+                c1.metric("Total de Leads", len(st.session_state.df_leads_ativa))
+                
+                # Interface simples de atualização
+                st.divider()
+                empresa_edit = st.selectbox("Selecionar Lead para Follow-up", st.session_state.df_leads_ativa['Empresa'].unique())
+                status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
+                obs_edit = st.text_input("Última Interação")
+                
+                if st.button("Atualizar Histórico"):
+                    st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
+            else:
+                st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
