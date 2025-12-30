@@ -16,6 +16,7 @@ st.set_page_config(
 # ===============================
 @st.cache_data
 def carregar_dados():
+    
     try:
         # Arquivos Originais
         vendas = pd.read_excel("dados/CONSULTA VENDEDORES.xlsx")
@@ -149,9 +150,88 @@ if vendas is not None:
         st.subheader(f"Total Final: R$ {total_proposta:,.2f}")
 
         if st.button("🖨️ Gerar PDF / Impressão"):
-            linhas = "".join([f"<tr><td>{d['COD']}</td><td>{d['PRODUTO']}</td><td>{d['CX']}</td><td>{d['QTDE']}</td><td>R$ {d['VALOR']:.2f}</td><td>R$ {d['TOTAL']:.2f}</td></tr>" for d in itens_final])
-            html = f"""<div style="font-family:Arial;border:1px solid #000;padding:20px;"><h2>MEDTEXTIL - PEDIDO</h2><p><b>Cliente:</b> {cliente_sel}</p><table border="1" style="width:100%;border-collapse:collapse;"><thead><tr><th>COD</th><th>PRODUTO</th><th>CX</th><th>QTDE</th><th>VALOR</th><th>TOTAL</th></tr></thead><tbody>{linhas}</tbody></table><h3>Total: R$ {total_proposta:,.2f}</h3><button onclick="window.print()">Imprimir</button></div>"""
-            components.html(html, height=600, scrolling=True)
+            # Gerar as linhas da tabela dinamicamente
+            linhas_html = "".join([
+                f"""
+                <tr>
+                    <td style="text-align:center;">{d['COD']}</td>
+                    <td>{d['PRODUTO']}</td>
+                    <td style="text-align:center;">{d['CX']}</td>
+                    <td style="text-align:center;">{d['QTDE']}</td>
+                    <td style="text-align:right;">R$ {d['VALOR']:,.2f}</td>
+                    <td style="text-align:right;">R$ {d['TOTAL']:,.2f}</td>
+                </tr>
+                """ for d in itens_final
+            ])
+
+            html_proposta = f"""
+            <div id="pedido-venda" style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: auto; border: 1px solid #ccc; padding: 20px;">
+                
+                <table style="width: 100%; border-bottom: 2px solid #000; margin-bottom: 20px;">
+                    <tr>
+                        <td style="width: 50%;">
+                            <h1 style="margin: 0; color: #007bff;">MEDTEXTIL</h1>
+                            <p style="font-size: 12px; margin: 5px 0;">Produtos Têxteis e Hospitalares<br>Departamento Comercial</p>
+                        </td>
+                        <td style="text-align: right; width: 50%;">
+                            <h2 style="margin: 0;">PEDIDO DE VENDA</h2>
+                            <p style="margin: 5px 0;"><b>Data:</b> {data_venda.strftime('%d/%m/%Y')}</p>
+                            <p style="margin: 5px 0;"><b>Status:</b> Orçamento / Proposta</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="background: #f4f4f4; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 10px 0; border-bottom: 1px solid #ccc;">DADOS DO CLIENTE</h4>
+                    <p style="margin: 3px 0;"><b>Razão Social:</b> {cliente_sel}</p>
+                    <p style="margin: 3px 0;"><b>Cond. Pagamento:</b> {cond_pagto} | <b>Frete:</b> {tipo_frete}</p>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #007bff; color: white;">
+                            <th style="padding: 8px; border: 1px solid #ddd;">CÓD</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align:left;">DESCRIÇÃO DO PRODUTO</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">CX</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">QTD</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">UNIT.</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {linhas_html}
+                    </tbody>
+                    <tfoot>
+                        <tr style="background: #eee; font-weight: bold; font-size: 15px;">
+                            <td colspan="5" style="padding: 10px; text-align: right; border: 1px solid #ddd;">TOTAL DO PEDIDO:</td>
+                            <td style="padding: 10px; text-align: right; border: 1px solid #ddd; color: #d9534f;">R$ {total_proposta:,.2f}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div style="margin-top: 40px; font-size: 11px; color: #666;">
+                    <p style="text-align: center;">Esta proposta tem validade de 5 dias sujeita a disponibilidade de estoque.</p>
+                    <div style="margin-top: 50px; display: flex; justify-content: space-around;">
+                        <div style="border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px;">Assinatura do Vendedor</div>
+                        <div style="border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px;">Aceite do Cliente</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px; text-align: center;">
+                    <button onclick="window.print()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        🖨️ Confirmar e Imprimir PDF
+                    </button>
+                </div>
+            </div>
+            
+            <style>
+                @media print {{
+                    button {{ display: none !important; }}
+                    #pedido-venda {{ border: none !important; }}
+                }}
+            </style>
+            """
+            components.html(html_proposta, height=800, scrolling=True)
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
@@ -245,3 +325,4 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
