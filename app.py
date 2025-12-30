@@ -66,7 +66,7 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # ===============================
 # 3. INTERFACE E NAVEGAÇÃO
 # ===============================
-st.sidebar.title("🛡️ MED MAIS CRM")
+st.sidebar.title("🛡️ MEDTEXTIL CRM")
 menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if vendas is not None:
@@ -325,5 +325,6 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
