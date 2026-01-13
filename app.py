@@ -88,7 +88,7 @@ if vendas is not None:
         if vend_sel != "Todos": df_f = df_f[df_f['Vendedor'] == vend_sel]
 
         c1, c2, c3 = st.columns(3)
-        fat_total = df_f['TotalProduto22'].sum()
+        fat_total = df_f['TotalProduto2'].sum()
         ped_total = df_f['Numero_NF'].nunique()
         c1.metric("Faturamento Total", f"R$ {fat_total:,.2f}")
         c2.metric("Total de Pedidos", ped_total)
@@ -325,6 +325,7 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
