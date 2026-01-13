@@ -368,9 +368,11 @@ if Dashboard is not None:
         if st.button("➕ Adicionar Novo Item", type="primary"):
             st.session_state.carrinho.append({
                 "id": len(st.session_state.carrinho), 
-                "produto_selecionado": None,
-                "cod_anterior": "",
-                "busca_anterior": ""
+                "cod_produto": "",
+                "peso": "",
+                "cx_emb": "",
+                "preco": 0.0,
+                "qtde": 1
             })
             st.rerun()
 
@@ -383,55 +385,77 @@ if Dashboard is not None:
             tipo_busca = col_tipo.radio("Buscar por:", ["Código", "Nome"], key=f"tipo_{i}", horizontal=True, label_visibility="collapsed")
             
             dados_item = None
-            produto_alterado = False
             
             if tipo_busca == "Código":
-                cod_digitado = col_busca.text_input("Digite o Código do Produto", key=f"cod_{i}", placeholder="Ex: 12345")
+                cod_digitado = col_busca.text_input("Digite o Código do Produto", key=f"cod_input_{i}", placeholder="Ex: 12345", value=item.get("cod_produto", ""))
                 
-                # Verificar se o código mudou
-                if cod_digitado and cod_digitado != item.get("cod_anterior", ""):
-                    item["cod_anterior"] = cod_digitado
+                if cod_digitado:
                     produto_encontrado = df_comb[df_comb['ID_COD'] == cod_digitado]
                     
                     if not produto_encontrado.empty:
                         dados_item = produto_encontrado.iloc[0]
-                        item["produto_selecionado"] = dados_item.to_dict()
-                        produto_alterado = True
+                        
+                        # Atualizar valores no session_state se produto mudou
+                        if item.get("cod_produto") != cod_digitado:
+                            item["cod_produto"] = cod_digitado
+                            item["peso"] = str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-'
+                            item["cx_emb"] = str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else ''
+                            item["preco"] = float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0
+                            item["qtde"] = 1
+                            item["nome_produto"] = dados_item['DESCRICAONF']
+                            item["marca"] = dados_item.get('LINHA', 'N/A')
+                            item["gramat"] = dados_item.get('GRAMAT', 'N/A')
+                            st.rerun()
                     else:
                         col_busca.warning("❌ Código não encontrado")
-                        item["produto_selecionado"] = None
-                elif cod_digitado and item.get("produto_selecionado"):
-                    # Usar dados já carregados
-                    dados_item = pd.Series(item["produto_selecionado"])
-                    
+                        
             else:  # Buscar por Nome
                 opcoes_busca = ["Selecione um produto..."] + [f"{row['ID_COD']} - {row['DESCRICAONF']}" for _, row in df_comb.iterrows()]
+                
+                # Encontrar índice atual se já tem produto selecionado
+                indice_atual = 0
+                if item.get("cod_produto"):
+                    busca_atual = f"{item['cod_produto']} - {item.get('nome_produto', '')}"
+                    if busca_atual in opcoes_busca:
+                        indice_atual = opcoes_busca.index(busca_atual)
+                
                 busca = col_busca.selectbox(
                     "Selecione o Produto",
                     options=opcoes_busca,
-                    key=f"busca_{i}",
+                    key=f"busca_select_{i}",
                     label_visibility="collapsed",
-                    index=0
+                    index=indice_atual
                 )
                 
-                # Verificar se a seleção mudou
-                if busca and busca != "Selecione um produto..." and busca != item.get("busca_anterior", ""):
-                    item["busca_anterior"] = busca
+                if busca and busca != "Selecione um produto...":
                     cod_selecionado = busca.split(" - ")[0]
                     produto_encontrado = df_comb[df_comb['ID_COD'] == cod_selecionado]
                     
                     if not produto_encontrado.empty:
                         dados_item = produto_encontrado.iloc[0]
-                        item["produto_selecionado"] = dados_item.to_dict()
-                        produto_alterado = True
-                elif busca and busca != "Selecione um produto..." and item.get("produto_selecionado"):
-                    # Usar dados já carregados
-                    dados_item = pd.Series(item["produto_selecionado"])
+                        
+                        # Atualizar valores no session_state se produto mudou
+                        if item.get("cod_produto") != cod_selecionado:
+                            item["cod_produto"] = cod_selecionado
+                            item["peso"] = str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-'
+                            item["cx_emb"] = str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else ''
+                            item["preco"] = float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0
+                            item["qtde"] = 1
+                            item["nome_produto"] = dados_item['DESCRICAONF']
+                            item["marca"] = dados_item.get('LINHA', 'N/A')
+                            item["gramat"] = dados_item.get('GRAMAT', 'N/A')
+                            st.rerun()
+            
+            # Se tem produto no session_state, reconstruir dados_item
+            if item.get("cod_produto") and dados_item is None:
+                produto_encontrado = df_comb[df_comb['ID_COD'] == item["cod_produto"]]
+                if not produto_encontrado.empty:
+                    dados_item = produto_encontrado.iloc[0]
             
             # Linha 2: Detalhes do Produto (se encontrado)
-            if dados_item is not None:
-                st.success(f"✅ **Produto:** {dados_item['DESCRICAONF']}")
-                st.caption(f"📦 **Código:** {dados_item['ID_COD']} | **Marca:** {dados_item.get('LINHA', 'N/A')} | **Gramatura:** {dados_item.get('GRAMAT', 'N/A')}")
+            if item.get("cod_produto") and item.get("nome_produto"):
+                st.success(f"✅ **Produto:** {item['nome_produto']}")
+                st.caption(f"📦 **Código:** {item['cod_produto']} | **Marca:** {item.get('marca', 'N/A')} | **Gramatura:** {item.get('gramat', 'N/A')}")
                 
                 # Linha 3: Labels das colunas
                 col_peso, col_cx, col_qtd, col_preco, col_total, col_rem = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
@@ -442,44 +466,42 @@ if Dashboard is not None:
                 col_preco.markdown("**Valor Unit.**")
                 col_total.markdown("**Total**")
                 
-                # Linha 4: Inputs com valores preenchidos
+                # Linha 4: Inputs com valores do session_state
                 col_peso2, col_cx2, col_qtd2, col_preco2, col_total2, col_rem2 = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
                 
-                # Valores padrão dos campos
-                peso_valor = str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-'
-                cx_valor = str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else ''
-                preco_valor = float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0
-                
-                # Garantir que os valores sejam atualizados quando o produto mudar
                 peso = col_peso2.text_input(
                     "Peso", 
-                    value=peso_valor, 
-                    key=f"peso_{i}_{item.get('cod_anterior', '')}_{item.get('busca_anterior', '')}", 
+                    value=item.get("peso", "-"), 
+                    key=f"peso_field_{i}", 
                     label_visibility="collapsed"
                 )
+                item["peso"] = peso
                 
                 cx_e = col_cx2.text_input(
                     "Cx", 
-                    value=cx_valor, 
-                    key=f"cx_{i}_{item.get('cod_anterior', '')}_{item.get('busca_anterior', '')}", 
+                    value=item.get("cx_emb", ""), 
+                    key=f"cx_field_{i}", 
                     label_visibility="collapsed"
                 )
+                item["cx_emb"] = cx_e
                 
                 qtd = col_qtd2.number_input(
                     "Qtd", 
                     min_value=1, 
-                    value=1, 
-                    key=f"qtd_{i}_{item.get('cod_anterior', '')}_{item.get('busca_anterior', '')}", 
+                    value=int(item.get("qtde", 1)), 
+                    key=f"qtd_field_{i}", 
                     label_visibility="collapsed"
                 )
+                item["qtde"] = qtd
                 
                 pr_u = col_preco2.number_input(
                     "Preço", 
-                    value=preco_valor, 
-                    key=f"preco_{i}_{item.get('cod_anterior', '')}_{item.get('busca_anterior', '')}", 
+                    value=float(item.get("preco", 0.0)), 
+                    key=f"preco_field_{i}", 
                     format="%.2f", 
                     label_visibility="collapsed"
                 )
+                item["preco"] = pr_u
                 
                 sub = pr_u * qtd
                 total_proposta += sub
@@ -487,8 +509,8 @@ if Dashboard is not None:
                 col_total2.metric("", f"R$ {sub:,.2f}")
                 
                 itens_final.append({
-                    "COD": dados_item['ID_COD'], 
-                    "PRODUTO": dados_item['DESCRICAONF'],
+                    "COD": item["cod_produto"], 
+                    "PRODUTO": item["nome_produto"],
                     "PESO": peso,
                     "CX": cx_e, 
                     "QTDE": qtd,
