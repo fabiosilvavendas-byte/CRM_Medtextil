@@ -6,9 +6,10 @@ import streamlit.components.v1 as components
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.units import cm, mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.pdfgen import canvas
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from io import BytesIO
 
 # 1. CONFIGURAÇÃO DA PÁGINA (Mantendo o ícone para o app no iPhone)
@@ -69,94 +70,168 @@ vendas = Dashboard
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
 if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = []
 if "dados_cliente" not in st.session_state: st.session_state.dados_cliente = {}
+if "dados_pedido" not in st.session_state: st.session_state.dados_pedido = {}
 
 # ===============================
-# FUNÇÃO PARA GERAR PDF
+# FUNÇÃO PARA GERAR PDF (MODELO EXATO)
 # ===============================
-def gerar_pdf_proposta(dados_cliente, itens_pedido, total):
+def gerar_pdf_proposta(dados_cliente, dados_pedido, itens_pedido, total):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
-    elementos = []
-    styles = getSampleStyleSheet()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
     
-    # Estilo customizado
-    estilo_titulo = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#003366'),
-        spaceAfter=30,
-        alignment=1
-    )
+    # Margens
+    margin_left = 30
+    margin_right = width - 30
+    y = height - 40
     
-    estilo_normal = ParagraphStyle(
-        'CustomNormal',
-        parent=styles['Normal'],
-        fontSize=10,
-        spaceAfter=12
-    )
+    # ========== CABEÇALHO EMPRESA ==========
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(margin_left, y, "MEDTEXTIL")
+    y -= 20
     
-    # Cabeçalho
-    elementos.append(Paragraph("PROPOSTA COMERCIAL", estilo_titulo))
-    elementos.append(Spacer(1, 0.5*cm))
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(margin_left, y, "ULTRA TEXTIL INDUSTRIA E COMERCIO DE PRODUTOS HOSPITALARES LTDA")
+    y -= 15
     
-    # Dados do Cliente
-    elementos.append(Paragraph("<b>DADOS DO CLIENTE</b>", styles['Heading2']))
-    elementos.append(Spacer(1, 0.3*cm))
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_left, y, "40.357.820/0001-50 - (83) 3233-9798")
+    y -= 12
+    c.drawString(margin_left, y, "comercial.ultratextilpb@gmail.com")
+    y -= 12
+    c.drawString(margin_left, y, "R Y DOIS, 355 - GALPÃO 3 - Distrito Industrial - João Pessoa - PB - CEP: 58.082-025")
+    y -= 12
+    c.drawString(margin_left, y, "CNPJ: 40.357.820/0001-50   Inscrição Estadual: 16.390.286-0")
+    y -= 25
     
-    info_cliente = f"""
-    <b>Cliente:</b> {dados_cliente.get('nome', 'N/A')}<br/>
-    <b>CNPJ:</b> {dados_cliente.get('cnpj', 'N/A')}<br/>
-    <b>Endereço:</b> {dados_cliente.get('endereco', 'N/A')}<br/>
-    <b>Cidade:</b> {dados_cliente.get('cidade', 'N/A')} - <b>Estado:</b> {dados_cliente.get('estado', 'N/A')}
-    """
-    elementos.append(Paragraph(info_cliente, estilo_normal))
-    elementos.append(Spacer(1, 0.5*cm))
+    # ========== TÍTULO PROPOSTA ==========
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width/2, y, "PROPOSTA COMERCIAL")
+    y -= 30
     
-    # Tabela de Produtos
-    elementos.append(Paragraph("<b>ITENS DO PEDIDO</b>", styles['Heading2']))
-    elementos.append(Spacer(1, 0.3*cm))
+    # ========== INFORMAÇÕES DO CLIENTE ==========
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(margin_left, y, "INFORMAÇÕES DO CLIENTE")
+    y -= 15
+    
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_left, y, f"Cliente: {dados_cliente.get('razao_social', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"Nome Fantasia: {dados_cliente.get('nome_fantasia', dados_cliente.get('razao_social', 'N/A'))}")
+    y -= 12
+    c.drawString(margin_left, y, f"CNPJ: {dados_cliente.get('cnpj', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"Endereço: {dados_cliente.get('endereco', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"Representante legal: {dados_cliente.get('representante', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"CPF: {dados_cliente.get('cpf_rep', 'N/A')}   RG: {dados_cliente.get('rg_rep', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"Telefone: {dados_cliente.get('telefone', 'N/A')}")
+    y -= 12
+    c.drawString(margin_left, y, f"Email NF-e: {dados_cliente.get('email', 'N/A')}")
+    y -= 25
+    
+    # ========== INFORMAÇÕES DO PEDIDO ==========
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(margin_left, y, "INFORMAÇÕES DO PEDIDO")
+    y -= 15
+    
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_left, y, f"Pedido N°: {dados_pedido.get('numero', 'N/A')}")
+    c.drawString(margin_left + 200, y, f"Data da Venda: {dados_pedido.get('data', datetime.now().strftime('%d/%m/%Y'))}")
+    y -= 12
+    c.drawString(margin_left, y, f"Tipo de frete: {dados_pedido.get('frete', 'CIF')}")
+    c.drawString(margin_left + 200, y, f"Condições de Pagto: {dados_pedido.get('pagamento', '30 dias')}")
+    y -= 25
+    
+    # ========== TABELA DE PRODUTOS ==========
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(margin_left, y, "Detalhes do Pedido")
+    y -= 20
     
     # Cabeçalho da tabela
-    dados_tabela = [['Cód.', 'Produto', 'Cx Embarque', 'Preço Unit.', 'Qtd', 'Total']]
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(margin_left, y, "COD.")
+    c.drawString(margin_left + 50, y, "PRODUTO")
+    c.drawString(margin_left + 270, y, "PESO")
+    c.drawString(margin_left + 310, y, "CX EMBARQUE")
+    c.drawString(margin_left + 390, y, "QTDE")
+    c.drawString(margin_left + 430, y, "VALOR")
+    c.drawString(margin_left + 500, y, "TOTAL")
+    y -= 3
     
-    # Linhas de produtos
+    # Linha separadora
+    c.line(margin_left, y, margin_right, y)
+    y -= 12
+    
+    # Itens da tabela
+    c.setFont("Helvetica", 8)
     for item in itens_pedido:
-        dados_tabela.append([
-            str(item['COD']),
-            str(item['PRODUTO'])[:40],  # Limita tamanho do nome
-            str(item['CX']),
-            f"R$ {item['VALOR']:.2f}",
-            str(item['QTDE']),
-            f"R$ {item['TOTAL']:.2f}"
-        ])
+        if y < 100:  # Nova página se necessário
+            c.showPage()
+            y = height - 40
+            c.setFont("Helvetica", 8)
+        
+        produto_nome = str(item['PRODUTO'])[:45]  # Limita tamanho
+        
+        c.drawString(margin_left, y, str(item['COD']))
+        c.drawString(margin_left + 50, y, produto_nome)
+        c.drawString(margin_left + 270, y, str(item.get('PESO', '-')))
+        c.drawString(margin_left + 310, y, str(item['CX']))
+        c.drawString(margin_left + 390, y, str(item['QTDE']))
+        c.drawString(margin_left + 430, y, f"R$ {item['VALOR']:.2f}")
+        c.drawString(margin_left + 500, y, f"R$ {item['TOTAL']:.2f}")
+        y -= 12
     
-    # Linha de total
-    dados_tabela.append(['', '', '', '', 'TOTAL:', f"R$ {total:.2f}"])
+    # Linha antes do total
+    y -= 5
+    c.line(margin_left, y, margin_right, y)
+    y -= 15
     
-    # Criar tabela
-    tabela = Table(dados_tabela, colWidths=[3*cm, 7*cm, 2.5*cm, 2.5*cm, 2*cm, 2.5*cm])
-    tabela.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8E8E8')),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    # TOTAIS
+    c.setFont("Helvetica-Bold", 10)
+    qtd_itens = sum([item['QTDE'] for item in itens_pedido])
+    c.drawString(margin_left, y, f"Qtde Itens: {qtd_itens}")
+    c.drawString(margin_left + 150, y, f"Frete: {dados_pedido.get('valor_frete', 'R$ 0,00')}")
+    c.drawString(margin_left + 300, y, f"Total Final: R$ {total:,.2f}")
+    y -= 30
     
-    elementos.append(tabela)
-    elementos.append(Spacer(1, 1*cm))
+    # ========== OBSERVAÇÕES ==========
+    if dados_pedido.get('observacao'):
+        c.setFont("Helvetica", 8)
+        c.drawString(margin_left, y, f"Observação: {dados_pedido.get('observacao', '')}")
+        y -= 20
     
-    # Rodapé
-    elementos.append(Paragraph(f"<i>Proposta gerada em: {datetime.now().strftime('%d/%m/%Y %H:%M')}</i>", estilo_normal))
+    # ========== DECLARAÇÕES ==========
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(margin_left, y, "DECLARAÇÕES:")
+    y -= 15
     
-    # Construir PDF
-    doc.build(elementos)
+    c.setFont("Helvetica", 8)
+    declaracoes = [
+        "- Prazo de entrega: até 30 dias corridos.",
+        "- Validade da proposta: 60 dias.",
+        "- Garantia: substituição em até 5 dias úteis.",
+        "- Preços incluem todos os impostos.",
+        "- Produtos novos com validade mínima de 5 anos.",
+        "- Registro ANVISA anexado."
+    ]
+    
+    for decl in declaracoes:
+        c.drawString(margin_left, y, decl)
+        y -= 12
+    
+    y -= 20
+    
+    # ========== ASSINATURA ==========
+    cidade = dados_cliente.get('cidade', 'João Pessoa')
+    data_atual = datetime.now()
+    c.setFont("Helvetica", 9)
+    c.drawString(margin_left, y, f"{cidade}, {data_atual.day} de {data_atual.strftime('%B')} de {data_atual.year}.")
+    
+    # Finalizar PDF
+    c.save()
     buffer.seek(0)
     return buffer
 
@@ -198,10 +273,10 @@ if Dashboard is not None:
         st.dataframe(rank, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 2: PEDIDOS (ATUALIZADO COM PDF)
+    # MÓDULO 2: PEDIDOS (MODELO FIEL)
     # ---------------------------
     elif menu == "🛒 Pedidos":
-        st.title("🛒 Sistema de Pedidos")
+        st.title("🛒 Sistema de Pedidos - MedTextil")
         
         # Preparar dados combinados
         cols_precos = ['ID_COD', 'PRECO']
@@ -213,131 +288,173 @@ if Dashboard is not None:
         df_comb['LINHA'] = df_comb['LINHA'].fillna('')
         df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')
         
-        # Seção 1: DADOS DO CLIENTE
-        st.subheader("📋 Dados do Cliente")
-        col1, col2 = st.columns(2)
+        # ========== SEÇÃO 1: DADOS DO CLIENTE ==========
+        st.subheader("📋 Informações do Cliente")
         
-        with col1:
-            # Buscar cliente existente ou criar novo
-            clientes_existentes = sorted(Dashboard['RazaoSocial'].unique())
-            tipo_cliente = st.radio("Tipo de Cliente", ["Existente", "Novo"], horizontal=True)
+        tab_cliente, tab_pedido = st.tabs(["👤 Cliente", "📝 Pedido"])
+        
+        with tab_cliente:
+            col1, col2 = st.columns(2)
             
-            if tipo_cliente == "Existente":
-                cliente_selecionado = st.selectbox("Selecionar Cliente", clientes_existentes)
-                # Buscar dados do cliente
-                dados_cli = Dashboard[Dashboard['RazaoSocial'] == cliente_selecionado].iloc[0]
-                st.session_state.dados_cliente = {
-                    'nome': cliente_selecionado,
-                    'cnpj': dados_cli.get('CNPJ', 'N/A'),
-                    'endereco': dados_cli.get('Endereco', 'N/A'),
-                    'cidade': dados_cli.get('Cidade', 'N/A'),
-                    'estado': dados_cli.get('Estado', 'N/A')
-                }
-            else:
-                st.session_state.dados_cliente = {
-                    'nome': st.text_input("Nome/Razão Social", value=st.session_state.dados_cliente.get('nome', '')),
-                    'cnpj': st.text_input("CNPJ", value=st.session_state.dados_cliente.get('cnpj', '')),
-                    'endereco': st.text_input("Endereço", value=st.session_state.dados_cliente.get('endereco', '')),
-                    'cidade': st.text_input("Cidade", value=st.session_state.dados_cliente.get('cidade', '')),
-                    'estado': st.text_input("Estado", value=st.session_state.dados_cliente.get('estado', ''))
-                }
+            with col1:
+                tipo_cliente = st.radio("Tipo de Cliente", ["Existente", "Novo"], horizontal=True)
+                
+                if tipo_cliente == "Existente":
+                    clientes_existentes = sorted(Dashboard['RazaoSocial'].unique())
+                    cliente_selecionado = st.selectbox("Selecionar Cliente", clientes_existentes)
+                    
+                    # Buscar dados do cliente no Dashboard
+                    dados_cli = Dashboard[Dashboard['RazaoSocial'] == cliente_selecionado].iloc[0]
+                    
+                    st.session_state.dados_cliente = {
+                        'razao_social': cliente_selecionado,
+                        'nome_fantasia': dados_cli.get('NomeFantasia', cliente_selecionado),
+                        'cnpj': dados_cli.get('CNPJ', 'N/A'),
+                        'endereco': dados_cli.get('Endereco', 'N/A'),
+                        'cidade': dados_cli.get('Cidade', 'N/A'),
+                        'estado': dados_cli.get('Estado', 'N/A'),
+                        'telefone': dados_cli.get('Telefone', 'N/A'),
+                        'email': dados_cli.get('Email', 'N/A'),
+                        'representante': st.text_input("Representante Legal", value=st.session_state.dados_cliente.get('representante', '')),
+                        'cpf_rep': st.text_input("CPF Representante", value=st.session_state.dados_cliente.get('cpf_rep', '')),
+                        'rg_rep': st.text_input("RG Representante", value=st.session_state.dados_cliente.get('rg_rep', ''))
+                    }
+                else:
+                    st.session_state.dados_cliente = {
+                        'razao_social': st.text_input("Razão Social", value=st.session_state.dados_cliente.get('razao_social', '')),
+                        'nome_fantasia': st.text_input("Nome Fantasia", value=st.session_state.dados_cliente.get('nome_fantasia', '')),
+                        'cnpj': st.text_input("CNPJ", value=st.session_state.dados_cliente.get('cnpj', '')),
+                        'endereco': st.text_input("Endereço Completo", value=st.session_state.dados_cliente.get('endereco', '')),
+                        'cidade': st.text_input("Cidade", value=st.session_state.dados_cliente.get('cidade', '')),
+                        'estado': st.text_input("Estado", value=st.session_state.dados_cliente.get('estado', '')),
+                        'telefone': st.text_input("Telefone", value=st.session_state.dados_cliente.get('telefone', '')),
+                        'email': st.text_input("Email NF-e", value=st.session_state.dados_cliente.get('email', '')),
+                        'representante': st.text_input("Representante Legal", value=st.session_state.dados_cliente.get('representante', '')),
+                        'cpf_rep': st.text_input("CPF Representante", value=st.session_state.dados_cliente.get('cpf_rep', '')),
+                        'rg_rep': st.text_input("RG Representante", value=st.session_state.dados_cliente.get('rg_rep', ''))
+                    }
+            
+            with col2:
+                st.info(f"""
+                **Cliente:** {st.session_state.dados_cliente.get('razao_social', 'N/A')}  
+                **Nome Fantasia:** {st.session_state.dados_cliente.get('nome_fantasia', 'N/A')}  
+                **CNPJ:** {st.session_state.dados_cliente.get('cnpj', 'N/A')}  
+                **Endereço:** {st.session_state.dados_cliente.get('endereco', 'N/A')}  
+                **Cidade/UF:** {st.session_state.dados_cliente.get('cidade', 'N/A')}/{st.session_state.dados_cliente.get('estado', 'N/A')}  
+                **Telefone:** {st.session_state.dados_cliente.get('telefone', 'N/A')}  
+                **Email:** {st.session_state.dados_cliente.get('email', 'N/A')}
+                """)
         
-        with col2:
-            st.info(f"""
-            **Cliente:** {st.session_state.dados_cliente.get('nome', 'N/A')}  
-            **CNPJ:** {st.session_state.dados_cliente.get('cnpj', 'N/A')}  
-            **Endereço:** {st.session_state.dados_cliente.get('endereco', 'N/A')}  
-            **Cidade:** {st.session_state.dados_cliente.get('cidade', 'N/A')}  
-            **Estado:** {st.session_state.dados_cliente.get('estado', 'N/A')}
-            """)
+        with tab_pedido:
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                st.session_state.dados_pedido['numero'] = st.text_input("Número do Pedido", value=st.session_state.dados_pedido.get('numero', ''))
+                st.session_state.dados_pedido['data'] = st.date_input("Data da Venda", value=datetime.now()).strftime('%d/%m/%Y')
+                st.session_state.dados_pedido['frete'] = st.selectbox("Tipo de Frete", ["CIF", "FOB"], index=0)
+            
+            with col_p2:
+                st.session_state.dados_pedido['pagamento'] = st.text_input("Condições de Pagamento", value=st.session_state.dados_pedido.get('pagamento', '30 dias'))
+                st.session_state.dados_pedido['valor_frete'] = st.text_input("Valor do Frete", value=st.session_state.dados_pedido.get('valor_frete', 'R$ 0,00'))
+                st.session_state.dados_pedido['observacao'] = st.text_area("Observação", value=st.session_state.dados_pedido.get('observacao', ''))
         
         st.divider()
         
-        # Seção 2: ITENS DO PEDIDO
+        # ========== SEÇÃO 2: ITENS DO PEDIDO ==========
         st.subheader("🛍️ Itens do Pedido")
         
         total_proposta = 0.0
         itens_final = []
 
-        if st.button("➕ Adicionar Novo Item"):
+        if st.button("➕ Adicionar Novo Item", type="primary"):
             st.session_state.carrinho.append({"id": len(st.session_state.carrinho)})
             st.rerun()
 
+        # Cabeçalho da tabela
+        st.markdown("**COD. | PRODUTO | PESO | CX EMBARQUE | QTDE | VALOR | TOTAL**")
+        st.divider()
+
         # Exibir itens do carrinho
         for i, item in enumerate(st.session_state.carrinho):
-            with st.container():
-                st.markdown(f"**Item {i+1}**")
-                col_cod, col_prod, col_cx, col_preco, col_qtd, col_rem = st.columns([2, 4, 2, 2, 2, 1])
+            col_cod, col_prod, col_peso, col_cx, col_qtd, col_preco, col_rem = st.columns([1.5, 4, 1, 1.5, 1, 1.5, 0.8])
+            
+            # Buscar por código
+            cod_digitado = col_cod.text_input("", key=f"cod_{i}", placeholder="Código")
+            
+            if cod_digitado:
+                # Buscar produto pelo código
+                produto_encontrado = df_comb[df_comb['ID_COD'] == cod_digitado]
                 
-                # Buscar por código
-                cod_digitado = col_cod.text_input("Código", key=f"cod_{i}", label_visibility="collapsed", placeholder="Cód.")
-                
-                if cod_digitado:
-                    # Buscar produto pelo código
-                    produto_encontrado = df_comb[df_comb['ID_COD'] == cod_digitado]
+                if not produto_encontrado.empty:
+                    dados_item = produto_encontrado.iloc[0]
                     
-                    if not produto_encontrado.empty:
-                        dados_item = produto_encontrado.iloc[0]
-                        
-                        col_prod.text_input("Produto", value=str(dados_item['DESCRICAONF']), key=f"prod_{i}", disabled=True, label_visibility="collapsed")
-                        cx_e = col_cx.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"cx_{i}", label_visibility="collapsed")
-                        pr_u = col_preco.number_input("Preço", value=float(dados_item['PRECO']), key=f"preco_{i}", format="%.2f", label_visibility="collapsed")
-                        qtd = col_qtd.number_input("Qtd", min_value=1, value=1, key=f"qtd_{i}", label_visibility="collapsed")
-                        
-                        sub = pr_u * qtd
-                        total_proposta += sub
-                        
-                        itens_final.append({
-                            "COD": dados_item['ID_COD'], 
-                            "PRODUTO": dados_item['DESCRICAONF'],
-                            "CX": cx_e, 
-                            "VALOR": pr_u, 
-                            "QTDE": qtd, 
-                            "TOTAL": sub
-                        })
-                        
-                        st.caption(f"Marca: {dados_item['LINHA']} | Gramatura: {dados_item['GRAMAT']} | Subtotal: R$ {sub:,.2f}")
-                    else:
-                        col_prod.warning("Código não encontrado")
-                
-                if col_rem.button("🗑️", key=f"rem_{i}"):
-                    st.session_state.carrinho.pop(i)
-                    st.rerun()
-                
-                st.divider()
+                    col_prod.text_input("", value=str(dados_item['DESCRICAONF'])[:40], key=f"prod_{i}", disabled=True)
+                    peso = col_peso.text_input("", value=str(dados_item.get('GRAMAT', '-')), key=f"peso_{i}")
+                    cx_e = col_cx.text_input("", value=str(dados_item.get('CX_EMB', '')), key=f"cx_{i}")
+                    qtd = col_qtd.number_input("", min_value=1, value=1, key=f"qtd_{i}", label_visibility="collapsed")
+                    pr_u = col_preco.number_input("", value=float(dados_item['PRECO']), key=f"preco_{i}", format="%.2f", label_visibility="collapsed")
+                    
+                    sub = pr_u * qtd
+                    total_proposta += sub
+                    
+                    col_prod.caption(f"💰 Subtotal: R$ {sub:,.2f}")
+                    
+                    itens_final.append({
+                        "COD": dados_item['ID_COD'], 
+                        "PRODUTO": dados_item['DESCRICAONF'],
+                        "PESO": peso,
+                        "CX": cx_e, 
+                        "QTDE": qtd,
+                        "VALOR": pr_u, 
+                        "TOTAL": sub
+                    })
+                else:
+                    col_prod.warning("❌ Código não encontrado")
+            
+            if col_rem.button("🗑️", key=f"rem_{i}"):
+                st.session_state.carrinho.pop(i)
+                st.rerun()
+            
+            st.divider()
 
-        # Resumo e Ações
+        # ========== RESUMO E AÇÕES ==========
         st.markdown(f"### 💰 Total da Proposta: R$ {total_proposta:,.2f}")
+        st.caption(f"📦 Total de itens: {len(itens_final)}")
 
-        if itens_final and st.session_state.dados_cliente.get('nome'):
+        if itens_final and st.session_state.dados_cliente.get('razao_social'):
             col_pdf, col_wa, col_limpar = st.columns(3)
             
             # Gerar PDF
-            if col_pdf.button("📄 Gerar PDF da Proposta", use_container_width=True):
-                pdf_buffer = gerar_pdf_proposta(st.session_state.dados_cliente, itens_final, total_proposta)
+            if col_pdf.button("📄 Gerar PDF da Proposta", use_container_width=True, type="primary"):
+                pdf_buffer = gerar_pdf_proposta(
+                    st.session_state.dados_cliente, 
+                    st.session_state.dados_pedido,
+                    itens_final, 
+                    total_proposta
+                )
                 st.download_button(
                     label="⬇️ Baixar Proposta em PDF",
                     data=pdf_buffer,
-                    file_name=f"Proposta_{st.session_state.dados_cliente['nome']}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    file_name=f"Proposta_MedTextil_{st.session_state.dados_cliente['razao_social'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf",
                     use_container_width=True
                 )
             
             # WhatsApp
             if col_wa.button("📱 Enviar via WhatsApp", use_container_width=True):
-                texto_wa = f"Olá! Segue proposta comercial MedTextil para {st.session_state.dados_cliente['nome']} no valor de R$ {total_proposta:,.2f}"
-                st.markdown(f"[🔗 Clique aqui para enviar no WhatsApp](https://wa.me/?text={texto_wa})")
+                texto_wa = f"Olá! Segue proposta comercial MedTextil para {st.session_state.dados_cliente['razao_social']} no valor de R$ {total_proposta:,.2f}"
+                st.markdown(f"[🔗 Clique para enviar no WhatsApp](https://wa.me/?text={texto_wa})")
             
             # Limpar pedido
             if col_limpar.button("🗑️ Limpar Pedido", use_container_width=True):
                 st.session_state.carrinho = []
                 st.session_state.dados_cliente = {}
+                st.session_state.dados_pedido = {}
                 st.rerun()
         else:
-            if not st.session_state.dados_cliente.get('nome'):
+            if not st.session_state.dados_cliente.get('razao_social'):
                 st.warning("⚠️ Preencha os dados do cliente para gerar a proposta")
             if not itens_final:
-                st.warning("⚠️ Adicione itens ao pedido para gerar a proposta")
+                st.info("ℹ️ Adicione itens ao pedido para gerar a proposta")
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
@@ -371,28 +488,4 @@ if Dashboard is not None:
 
         with tab_view:
             st.dataframe(st.session_state.df_leads_ativa, use_container_width=True, hide_index=True)
-            if not st.session_state.df_leads_ativa.empty:
-                csv = st.session_state.df_leads_ativa.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 Baixar Leads", csv, "leads.csv", "text/csv")
-
-        with tab_add:
-            with st.form("novo_lead_form", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                emp_n = c1.text_input("Empresa")
-                cid_n = c2.text_input("Cidade")
-                seg_n = c1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
-                con_n = c2.text_input("Contato")
-                dor_n = st.text_area("Necessidade")
-                if st.form_submit_button("✅ Salvar Lead"):
-                    if emp_n:
-                        novo = {"Data de Entrada": datetime.now().strftime("%d/%m/%Y"), "Empresa": emp_n, "Cidade": cid_n, "Segmento": seg_n, "Contato": con_n, "Status do Lead": "Prospecção", "Dor Principal": dor_n}
-                        st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo])], ignore_index=True)
-                        st.success("Lead salvo!")
-                        st.rerun()
-
-        with tab_edit:
-            if not st.session_state.df_leads_ativa.empty:
-                emp_edit = st.selectbox("Selecionar Lead", st.session_state.df_leads_ativa['Empresa'].unique())
-                status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
-                if st.button("Atualizar Histórico"):
-                    st.toast(f"Status de {emp_edit} atualizado!", icon="🚀")
+            if not st.session_state.df_leads
