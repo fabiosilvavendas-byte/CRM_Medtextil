@@ -170,7 +170,7 @@ for i, item in enumerate(st.session_state.carrinho):
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
     elif menu == "🚨 Inatividade":
-        st.title("🚨 Clientes Inativos")
+        st.title("🚨 Inatividade")
         with st.sidebar:
             vendedores_inat = sorted([str(x) for x in Dashboard['Vendedor'].unique() if pd.notna(x)])
             v_inat = st.multiselect("Vendedores", vendedores_inat, default=vendedores_inat)
@@ -258,6 +258,7 @@ for i, item in enumerate(st.session_state.carrinho):
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
