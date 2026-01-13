@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA (Mantendo o ícone para o app no iPhone)
 st.set_page_config(
     page_title="CRM MedTextil - Pro", 
     layout="wide", 
@@ -12,11 +12,12 @@ st.set_page_config(
 )
 
 # ===============================
-# 2. CARREGAMENTO DOS DADOS
+# 2. CARREGAMENTO DOS DADOS (SISTEMA ROBUSTO)
 # ===============================
 @st.cache_data
 def carregar_dados():
     try:
+        # Arquivos Originais
         Dashboard = pd.read_excel("dados/CONSULTA_VENDEDORES.xlsx")
         
         try:
@@ -25,11 +26,11 @@ def carregar_dados():
             produtos = pd.read_excel("dados/Produtos_Agrupados_Completos_conciliados.xlsx")
             
         try:
-            # Carregamos a planilha de preços garantindo que pegamos as colunas extras solicitadas
             precos = pd.read_excel("dados/TABELAS_NE.xlsx", sheet_name='TAB 5%')
         except:
             precos = pd.read_excel("dados/TABELAS_NE.xlsx")
             
+        # NOVO ARQUIVO DE EXPANSÃO
         try:
             expansao = pd.read_excel("dados/CRM_Expansao_PR_2026_COMPLETO.xlsx", sheet_name=None)
         except:
@@ -102,16 +103,15 @@ if Dashboard is not None:
     # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
     # ---------------------------
     elif menu == "🛒 Pedidos":
-        # AJUSTE: Buscando PRECO, LINHA e GRAMAT da planilha de Preços (TABELAS_NE)
+        # Ajuste para buscar LINHA e GRAMAT da planilha de Preços (TABELAS_NE)
         cols_precos = ['ID_COD', 'PRECO']
         if 'LINHA' in precos.columns: cols_precos.append('LINHA')
         if 'GRAMAT' in precos.columns: cols_precos.append('GRAMAT')
 
         df_comb = produtos.merge(precos[cols_precos], on='ID_COD', how='left')
-
         df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-        df_comb['LINHA'] = df_comb['LINHA'].fillna('S/I')
-        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('S/I')
+        df_comb['LINHA'] = df_comb['LINHA'].fillna('')
+        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
 
         df_comb['DISPLAY'] = (
             df_comb['ID_COD'].astype(str)
@@ -129,37 +129,22 @@ if Dashboard is not None:
         for i, item in enumerate(st.session_state.carrinho):
             with st.container():
                 c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
-
-                escolha = c_busca.selectbox(
-                    f"Item {i+1}",
-                    options=sorted(df_comb['DISPLAY'].unique()),
-                    key=f"sel_{i}"
-                )
+                escolha = c_busca.selectbox(f"Item {i+1}", options=sorted(df_comb['DISPLAY'].unique()), key=f"sel_{i}")
 
                 if escolha:
                     dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
-
-                    st.caption(
-                        f"**Marca/Linha:** {dados_item['LINHA']} | "
-                        f"**Gramatura:** {dados_item['GRAMAT']}"
-                    )
+                    st.caption(f"**Marca:** {dados_item['LINHA']} | **Gramatura:** {dados_item['GRAMAT']}")
 
                     cx_e = c_cx.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"x_{i}")
                     pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
                     qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
-
                     sub = pr_u * qtd
                     total_proposta += sub
 
                     itens_final.append({
-                        "COD": dados_item['ID_COD'],
-                        "PRODUTO": dados_item['DESCRICAONF'],
-                        "MARCA": dados_item['LINHA'],
-                        "GRAMATURA": dados_item['GRAMAT'],
-                        "CX": cx_e,
-                        "QTDE": qtd,
-                        "VALOR": pr_u,
-                        "TOTAL": sub
+                        "COD": dados_item['ID_COD'], "PRODUTO": dados_item['DESCRICAONF'],
+                        "MARCA": dados_item['LINHA'], "GRAMATURA": dados_item['GRAMAT'],
+                        "CX": cx_e, "QTDE": qtd, "VALOR": pr_u, "TOTAL": sub
                     })
 
                 if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
@@ -168,6 +153,16 @@ if Dashboard is not None:
 
         st.divider()
         st.subheader(f"Total da Proposta: R$ {total_proposta:,.2f}")
+
+        if itens_final:
+            c_pdf, c_wa = st.columns(2)
+            if c_pdf.button("📄 Gerar PDF da Proposta"):
+                st.write("### Proposta Comercial")
+                st.table(pd.DataFrame(itens_final))
+            
+            if c_wa.button("📱 Enviar via WhatsApp"):
+                texto = f"Olá! Segue orçamento MedTextil no valor de R$ {total_proposta:,.2f}"
+                st.markdown(f"[Clique aqui para enviar](https://wa.me/?text={texto})")
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
@@ -191,7 +186,6 @@ if Dashboard is not None:
     # ---------------------------
     elif menu == "🚀 Expansão PR":
         st.title("🚀 Plano de Expansão PR 2026")
-        
         if "df_leads_ativa" not in st.session_state:
             if expansao and 'Gestão de Leads' in expansao:
                 st.session_state.df_leads_ativa = expansao['Gestão de Leads'].copy()
@@ -208,25 +202,26 @@ if Dashboard is not None:
 
         with tab_add:
             with st.form("novo_lead_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                empresa_n = col1.text_input("Empresa")
-                cidade_n = col2.text_input("Cidade")
-                segmento_n = col1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
-                contato_n = col2.text_input("Contato")
+                c1, c2 = st.columns(2)
+                emp_n = c1.text_input("Empresa")
+                cid_n = c2.text_input("Cidade")
+                seg_n = c1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
+                con_n = c2.text_input("Contato")
                 dor_n = st.text_area("Necessidade")
                 if st.form_submit_button("✅ Salvar Lead"):
-                    if empresa_n:
-                        novo = {"Data de Entrada": datetime.now().strftime("%d/%m/%Y"), "Empresa": empresa_n, "Cidade": cidade_n, "Segmento": segmento_n, "Contato": contato_n, "Status do Lead": "Prospecção", "Dor Principal": dor_n}
+                    if emp_n:
+                        novo = {"Data de Entrada": datetime.now().strftime("%d/%m/%Y"), "Empresa": emp_n, "Cidade": cid_n, "Segmento": seg_n, "Contato": con_n, "Status do Lead": "Prospecção", "Dor Principal": dor_n}
                         st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo])], ignore_index=True)
                         st.success("Lead salvo!")
                         st.rerun()
 
         with tab_edit:
             if not st.session_state.df_leads_ativa.empty:
-                empresa_edit = st.selectbox("Selecionar Lead", st.session_state.df_leads_ativa['Empresa'].unique())
-                status_edit = st.select_slider("Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
-                if st.button("Atualizar"):
-                    st.toast(f"Status de {empresa_edit} atualizado!")
+                emp_edit = st.selectbox("Selecionar Lead", st.session_state.df_leads_ativa['Empresa'].unique())
+                status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
+                if st.button("Atualizar Histórico"):
+                    st.toast(f"Status de {emp_edit} atualizado!", icon="🚀")
+
 
 
 
