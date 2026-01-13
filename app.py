@@ -67,7 +67,7 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # 3. INTERFACE E NAVEGAÇÃO
 # ===============================
 st.sidebar.title("🛡️ MEDTEXTIL CRM")
-menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
+menu = st.sidebar.radio("Navegação", ["📊 Vendas", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if vendas is not None:
     # ---------------------------
@@ -103,135 +103,68 @@ if vendas is not None:
     # ---------------------------
     # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
     # ---------------------------
-    elif menu == "🧾 Pedidos":
-        st.title("🧾 Proposta Comercial")
-        col_cli, col_add = st.columns([3, 1])
-        clientes_base = sorted([str(x) for x in vendas['RazaoSocial'].unique() if pd.notna(x)])
-        lista_completa = sorted(clientes_base + st.session_state.clientes_novos)
-        cliente_sel = col_cli.selectbox("Cliente", options=lista_completa)
-        
-        with col_add.expander("➕ Novo"):
-            novo_c = st.text_input("Razão Social")
-            if st.button("Salvar"):
-                if novo_c: st.session_state.clientes_novos.append(novo_c); st.rerun()
+    df_comb = (
+    produtos
+    .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
+    .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
+)
 
-        c1, c2, c3 = st.columns(3)
-        cond_pagto = c1.text_input("Pagamento", value="A Vista")
-        tipo_frete = c2.selectbox("Frete", ["CIF", "FOB"])
-        data_venda = c3.date_input("Data", datetime.now())
+df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
+df_comb['LINHA'] = df_comb['LINHA'].fillna('')
+df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')
 
-        st.divider()
-        if st.button("➕ Adicionar Produto"):
-            st.session_state.carrinho.append({"id": len(st.session_state.carrinho)})
+# Exibição com código + descrição (permite busca pelo ID_COD)
+df_comb['DISPLAY'] = (
+    df_comb['ID_COD'].astype(str)
+    + " | "
+    + df_comb['DESCRICAONF'].astype(str)
+)
 
-        df_comb = pd.merge(produtos, precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
-        df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-        df_comb['DISPLAY'] = df_comb['DESCRICAONF'].astype(str) + " | CÓD: " + df_comb['ID_COD'].astype(str)
-        
-        total_proposta = 0.0
-        itens_final = []
+total_proposta = 0.0
+itens_final = []
 
-        for i, item in enumerate(st.session_state.carrinho):
-            with st.container():
-                c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
-                escolha = c_busca.selectbox(f"Item {i+1}", options=sorted(df_comb['DISPLAY'].unique()), key=f"sel_{i}")
-                if escolha:
-                    dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
-                    cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
-                    pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
-                    qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
-                    sub = pr_u * qtd
-                    total_proposta += sub
-                    itens_final.append({"COD": dados_item['ID_COD'], "PRODUTO": dados_item['DESCRICAONF'], "CX": cx_e, "QTDE": qtd, "VALOR": pr_u, "TOTAL": sub})
-                if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
-                    st.session_state.carrinho.pop(i); st.rerun()
-            st.divider()
+for i, item in enumerate(st.session_state.carrinho):
+    with st.container():
+        c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
 
-        st.subheader(f"Total Final: R$ {total_proposta:,.2f}")
+        escolha = c_busca.selectbox(
+            f"Item {i+1}",
+            options=sorted(df_comb['DISPLAY'].unique()),
+            key=f"sel_{i}"
+        )
 
-        if st.button("🖨️ Gerar PDF / Impressão"):
-            # Gerar as linhas da tabela dinamicamente
-            linhas_html = "".join([
-                f"""
-                <tr>
-                    <td style="text-align:center;">{d['COD']}</td>
-                    <td>{d['PRODUTO']}</td>
-                    <td style="text-align:center;">{d['CX']}</td>
-                    <td style="text-align:center;">{d['QTDE']}</td>
-                    <td style="text-align:right;">R$ {d['VALOR']:,.2f}</td>
-                    <td style="text-align:right;">R$ {d['TOTAL']:,.2f}</td>
-                </tr>
-                """ for d in itens_final
-            ])
+        if escolha:
+            dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
 
-            html_proposta = f"""
-            <div id="pedido-venda" style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: auto; border: 1px solid #ccc; padding: 20px;">
-                
-                <table style="width: 100%; border-bottom: 2px solid #000; margin-bottom: 20px;">
-                    <tr>
-                        <td style="width: 50%;">
-                            <h1 style="margin: 0; color: #007bff;">MEDTEXTIL</h1>
-                            <p style="font-size: 12px; margin: 5px 0;">Produtos Têxteis e Hospitalares<br>Departamento Comercial</p>
-                        </td>
-                        <td style="text-align: right; width: 50%;">
-                            <h2 style="margin: 0;">PEDIDO DE VENDA</h2>
-                            <p style="margin: 5px 0;"><b>Data:</b> {data_venda.strftime('%d/%m/%Y')}</p>
-                            <p style="margin: 5px 0;"><b>Status:</b> Orçamento / Proposta</p>
-                        </td>
-                    </tr>
-                </table>
+            # Exibição informativa (marca e gramatura)
+            st.caption(
+                f"**Marca:** {dados_item['LINHA']} | "
+                f"**Gramatura:** {dados_item['GRAMAT']}"
+            )
 
-                <div style="background: #f4f4f4; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-                    <h4 style="margin: 0 0 10px 0; border-bottom: 1px solid #ccc;">DADOS DO CLIENTE</h4>
-                    <p style="margin: 3px 0;"><b>Razão Social:</b> {cliente_sel}</p>
-                    <p style="margin: 3px 0;"><b>Cond. Pagamento:</b> {cond_pagto} | <b>Frete:</b> {tipo_frete}</p>
-                </div>
+            cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
+            pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
+            qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
 
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="background: #007bff; color: white;">
-                            <th style="padding: 8px; border: 1px solid #ddd;">CÓD</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; text-align:left;">DESCRIÇÃO DO PRODUTO</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">CX</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">QTD</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">UNIT.</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">TOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {linhas_html}
-                    </tbody>
-                    <tfoot>
-                        <tr style="background: #eee; font-weight: bold; font-size: 15px;">
-                            <td colspan="5" style="padding: 10px; text-align: right; border: 1px solid #ddd;">TOTAL DO PEDIDO:</td>
-                            <td style="padding: 10px; text-align: right; border: 1px solid #ddd; color: #d9534f;">R$ {total_proposta:,.2f}</td>
-                        </tr>
-                    </tfoot>
-                </table>
+            sub = pr_u * qtd
+            total_proposta += sub
 
-                <div style="margin-top: 40px; font-size: 11px; color: #666;">
-                    <p style="text-align: center;">Esta proposta tem validade de 5 dias sujeita a disponibilidade de estoque.</p>
-                    <div style="margin-top: 50px; display: flex; justify-content: space-around;">
-                        <div style="border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px;">Assinatura do Vendedor</div>
-                        <div style="border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px;">Aceite do Cliente</div>
-                    </div>
-                </div>
+            itens_final.append({
+                "COD": dados_item['ID_COD'],
+                "PRODUTO": dados_item['DESCRICAONF'],
+                "MARCA": dados_item['LINHA'],
+                "GRAMATURA": dados_item['GRAMAT'],
+                "CX": cx_e,
+                "QTDE": qtd,
+                "VALOR": pr_u,
+                "TOTAL": sub
+            })
 
-                <div style="margin-top: 30px; text-align: center;">
-                    <button onclick="window.print()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                        🖨️ Confirmar e Imprimir PDF
-                    </button>
-                </div>
-            </div>
-            
-            <style>
-                @media print {{
-                    button {{ display: none !important; }}
-                    #pedido-venda {{ border: none !important; }}
-                }}
-            </style>
-            """
-            components.html(html_proposta, height=800, scrolling=True)
+        if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
+            st.session_state.carrinho.pop(i)
+            st.rerun()
+
+    st.divider()
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
@@ -325,6 +258,7 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
