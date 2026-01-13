@@ -362,18 +362,15 @@ if Dashboard is not None:
         # ========== SEÇÃO 2: ITENS DO PEDIDO ==========
         st.subheader("🛍️ Itens do Pedido")
         
+        # Inicializar lista de produtos se não existir
+        if "produtos_selecionados" not in st.session_state:
+            st.session_state.produtos_selecionados = {}
+        
         total_proposta = 0.0
         itens_final = []
 
         if st.button("➕ Adicionar Novo Item", type="primary"):
-            st.session_state.carrinho.append({
-                "id": len(st.session_state.carrinho), 
-                "cod_produto": "",
-                "peso": "",
-                "cx_emb": "",
-                "preco": 0.0,
-                "qtde": 1
-            })
+            st.session_state.carrinho.append({"id": len(st.session_state.carrinho)})
             st.rerun()
 
         # Exibir itens do carrinho
@@ -384,27 +381,28 @@ if Dashboard is not None:
             col_tipo, col_busca = st.columns([1, 5])
             tipo_busca = col_tipo.radio("Buscar por:", ["Código", "Nome"], key=f"tipo_{i}", horizontal=True, label_visibility="collapsed")
             
-            dados_item = None
+            cod_produto_atual = None
             
             if tipo_busca == "Código":
-                cod_digitado = col_busca.text_input("Digite o Código do Produto", key=f"cod_input_{i}", placeholder="Ex: 12345", value=item.get("cod_produto", ""))
+                cod_digitado = col_busca.text_input("Digite o Código do Produto", key=f"cod_input_{i}", placeholder="Ex: 12345")
                 
                 if cod_digitado:
                     produto_encontrado = df_comb[df_comb['ID_COD'] == cod_digitado]
                     
                     if not produto_encontrado.empty:
-                        dados_item = produto_encontrado.iloc[0]
-                        
-                        # Atualizar valores no session_state se produto mudou
-                        if item.get("cod_produto") != cod_digitado:
-                            item["cod_produto"] = cod_digitado
-                            item["peso"] = str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-'
-                            item["cx_emb"] = str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else ''
-                            item["preco"] = float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0
-                            item["qtde"] = 1
-                            item["nome_produto"] = dados_item['DESCRICAONF']
-                            item["marca"] = dados_item.get('LINHA', 'N/A')
-                            item["gramat"] = dados_item.get('GRAMAT', 'N/A')
+                        cod_produto_atual = cod_digitado
+                        # Salvar dados do produto no session state
+                        if f"prod_{i}" not in st.session_state.produtos_selecionados or st.session_state.produtos_selecionados.get(f"prod_{i}", {}).get("cod") != cod_digitado:
+                            dados_item = produto_encontrado.iloc[0]
+                            st.session_state.produtos_selecionados[f"prod_{i}"] = {
+                                "cod": str(dados_item['ID_COD']),
+                                "nome": str(dados_item['DESCRICAONF']),
+                                "peso": str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-',
+                                "cx": str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else '',
+                                "preco": float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0,
+                                "marca": str(dados_item.get('LINHA', 'N/A')),
+                                "gramat": str(dados_item.get('GRAMAT', 'N/A'))
+                            }
                             st.rerun()
                     else:
                         col_busca.warning("❌ Código não encontrado")
@@ -412,52 +410,41 @@ if Dashboard is not None:
             else:  # Buscar por Nome
                 opcoes_busca = ["Selecione um produto..."] + [f"{row['ID_COD']} - {row['DESCRICAONF']}" for _, row in df_comb.iterrows()]
                 
-                # Encontrar índice atual se já tem produto selecionado
-                indice_atual = 0
-                if item.get("cod_produto"):
-                    busca_atual = f"{item['cod_produto']} - {item.get('nome_produto', '')}"
-                    if busca_atual in opcoes_busca:
-                        indice_atual = opcoes_busca.index(busca_atual)
-                
                 busca = col_busca.selectbox(
                     "Selecione o Produto",
                     options=opcoes_busca,
                     key=f"busca_select_{i}",
-                    label_visibility="collapsed",
-                    index=indice_atual
+                    label_visibility="collapsed"
                 )
                 
                 if busca and busca != "Selecione um produto...":
                     cod_selecionado = busca.split(" - ")[0]
-                    produto_encontrado = df_comb[df_comb['ID_COD'] == cod_selecionado]
+                    cod_produto_atual = cod_selecionado
                     
-                    if not produto_encontrado.empty:
-                        dados_item = produto_encontrado.iloc[0]
-                        
-                        # Atualizar valores no session_state se produto mudou
-                        if item.get("cod_produto") != cod_selecionado:
-                            item["cod_produto"] = cod_selecionado
-                            item["peso"] = str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-'
-                            item["cx_emb"] = str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else ''
-                            item["preco"] = float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0
-                            item["qtde"] = 1
-                            item["nome_produto"] = dados_item['DESCRICAONF']
-                            item["marca"] = dados_item.get('LINHA', 'N/A')
-                            item["gramat"] = dados_item.get('GRAMAT', 'N/A')
+                    # Salvar dados do produto no session state
+                    if f"prod_{i}" not in st.session_state.produtos_selecionados or st.session_state.produtos_selecionados.get(f"prod_{i}", {}).get("cod") != cod_selecionado:
+                        produto_encontrado = df_comb[df_comb['ID_COD'] == cod_selecionado]
+                        if not produto_encontrado.empty:
+                            dados_item = produto_encontrado.iloc[0]
+                            st.session_state.produtos_selecionados[f"prod_{i}"] = {
+                                "cod": str(dados_item['ID_COD']),
+                                "nome": str(dados_item['DESCRICAONF']),
+                                "peso": str(dados_item.get('GRAMAT', '-')) if pd.notna(dados_item.get('GRAMAT')) else '-',
+                                "cx": str(dados_item.get('CX_EMB', '')) if pd.notna(dados_item.get('CX_EMB')) else '',
+                                "preco": float(dados_item.get('PRECO', 0)) if pd.notna(dados_item.get('PRECO')) else 0.0,
+                                "marca": str(dados_item.get('LINHA', 'N/A')),
+                                "gramat": str(dados_item.get('GRAMAT', 'N/A'))
+                            }
                             st.rerun()
             
-            # Se tem produto no session_state, reconstruir dados_item
-            if item.get("cod_produto") and dados_item is None:
-                produto_encontrado = df_comb[df_comb['ID_COD'] == item["cod_produto"]]
-                if not produto_encontrado.empty:
-                    dados_item = produto_encontrado.iloc[0]
-            
-            # Linha 2: Detalhes do Produto (se encontrado)
-            if item.get("cod_produto") and item.get("nome_produto"):
-                st.success(f"✅ **Produto:** {item['nome_produto']}")
-                st.caption(f"📦 **Código:** {item['cod_produto']} | **Marca:** {item.get('marca', 'N/A')} | **Gramatura:** {item.get('gramat', 'N/A')}")
+            # Verificar se tem produto selecionado
+            if f"prod_{i}" in st.session_state.produtos_selecionados:
+                produto = st.session_state.produtos_selecionados[f"prod_{i}"]
                 
-                # Linha 3: Labels das colunas
+                st.success(f"✅ **Produto:** {produto['nome']}")
+                st.caption(f"📦 **Código:** {produto['cod']} | **Marca:** {produto['marca']} | **Gramatura:** {produto['gramat']}")
+                
+                # Labels das colunas
                 col_peso, col_cx, col_qtd, col_preco, col_total, col_rem = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
                 
                 col_peso.markdown("**Peso**")
@@ -466,42 +453,41 @@ if Dashboard is not None:
                 col_preco.markdown("**Valor Unit.**")
                 col_total.markdown("**Total**")
                 
-                # Linha 4: Inputs com valores do session_state
+                # Inputs - usar valores do produto salvo
                 col_peso2, col_cx2, col_qtd2, col_preco2, col_total2, col_rem2 = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
+                
+                # Criar key única baseada no código do produto para forçar recriação dos widgets
+                key_suffix = produto['cod']
                 
                 peso = col_peso2.text_input(
                     "Peso", 
-                    value=item.get("peso", "-"), 
-                    key=f"peso_field_{i}", 
+                    value=produto['peso'], 
+                    key=f"peso_{i}_{key_suffix}", 
                     label_visibility="collapsed"
                 )
-                item["peso"] = peso
                 
                 cx_e = col_cx2.text_input(
                     "Cx", 
-                    value=item.get("cx_emb", ""), 
-                    key=f"cx_field_{i}", 
+                    value=produto['cx'], 
+                    key=f"cx_{i}_{key_suffix}", 
                     label_visibility="collapsed"
                 )
-                item["cx_emb"] = cx_e
                 
                 qtd = col_qtd2.number_input(
                     "Qtd", 
                     min_value=1, 
-                    value=int(item.get("qtde", 1)), 
-                    key=f"qtd_field_{i}", 
+                    value=1, 
+                    key=f"qtd_{i}_{key_suffix}", 
                     label_visibility="collapsed"
                 )
-                item["qtde"] = qtd
                 
                 pr_u = col_preco2.number_input(
                     "Preço", 
-                    value=float(item.get("preco", 0.0)), 
-                    key=f"preco_field_{i}", 
+                    value=produto['preco'], 
+                    key=f"preco_{i}_{key_suffix}", 
                     format="%.2f", 
                     label_visibility="collapsed"
                 )
-                item["preco"] = pr_u
                 
                 sub = pr_u * qtd
                 total_proposta += sub
@@ -509,8 +495,8 @@ if Dashboard is not None:
                 col_total2.metric("", f"R$ {sub:,.2f}")
                 
                 itens_final.append({
-                    "COD": item["cod_produto"], 
-                    "PRODUTO": item["nome_produto"],
+                    "COD": produto['cod'], 
+                    "PRODUTO": produto['nome'],
                     "PESO": peso,
                     "CX": cx_e, 
                     "QTDE": qtd,
@@ -520,6 +506,8 @@ if Dashboard is not None:
                 
                 if col_rem2.button("🗑️", key=f"rem_{i}"):
                     st.session_state.carrinho.pop(i)
+                    if f"prod_{i}" in st.session_state.produtos_selecionados:
+                        del st.session_state.produtos_selecionados[f"prod_{i}"]
                     st.rerun()
             else:
                 # Botão remover mesmo sem produto selecionado
