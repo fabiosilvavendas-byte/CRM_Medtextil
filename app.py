@@ -59,7 +59,7 @@ def carregar_dados():
         return None, None, None, None
 
 Dashboard, produtos, precos, expansao = carregar_dados()
-
+vendas = Dashboard
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
 if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = []
 
@@ -273,6 +273,7 @@ if Dashboard is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
