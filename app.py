@@ -170,18 +170,35 @@ for i, item in enumerate(st.session_state.carrinho):
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
     elif menu == "🚨 Inatividade":
-        st.title("🚨 Inatividade")
-        with st.sidebar:
-            vendedores_inat = sorted([str(x) for x in Dashboard['Vendedor'].unique() if pd.notna(x)])
-            v_inat = st.multiselect("Vendedores", vendedores_inat, default=vendedores_inat)
-            d_limite = st.number_input("Dias Limite", min_value=1, value=60)
-        
-        df_i = Dashboard[Dashboard['Vendedor'].isin(v_inat)].copy()
-        if not df_i.empty:
-            res = df_i.groupby(['RazaoSocial', 'Vendedor', 'Estado']).agg({'DataEmissao': 'max', 'TotalProduto2': 'sum'}).reset_index()
-            res['Dias_Inativo'] = (datetime.now() - res['DataEmissao']).dt.days
-            final = res[res['Dias_Inativo'] >= d_limite].sort_values('Dias_Inativo', ascending=False)
-            st.dataframe(final, use_container_width=True)
+    st.title("🚨 Inatividade")
+    with st.sidebar:
+        vendedores_inat = sorted(
+            [str(x) for x in vendas['Vendedor'].unique() if pd.notna(x)]
+        )
+        v_inat = st.multiselect(
+            "Vendedores", vendedores_inat, default=vendedores_inat
+        )
+        d_limite = st.number_input(
+            "Dias Limite", min_value=1, value=60
+        )
+
+    df_i = vendas[vendas['Vendedor'].isin(v_inat)].copy()
+    if not df_i.empty:
+        res = (
+            df_i
+            .groupby(['RazaoSocial', 'Vendedor', 'Estado'])
+            .agg({'DataEmissao': 'max', 'TotalProduto2': 'sum'})
+            .reset_index()
+        )
+        res['Dias_Inativo'] = (
+            datetime.now() - res['DataEmissao']
+        ).dt.days
+        final = res[
+            res['Dias_Inativo'] >= d_limite
+        ].sort_values('Dias_Inativo', ascending=False)
+
+        st.dataframe(final, use_container_width=True)
+
 
     # ---------------------------
     # MÓDULO 4: NOVO - EXPANSÃO PR (BASEADO NO RELATÓRIO)
@@ -258,6 +275,7 @@ for i, item in enumerate(st.session_state.carrinho):
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
