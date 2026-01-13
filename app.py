@@ -88,16 +88,16 @@ if vendas is not None:
         if vend_sel != "Todos": df_f = df_f[df_f['Vendedor'] == vend_sel]
 
         c1, c2, c3 = st.columns(3)
-        fat_total = df_f['PrecoQtdXItem'].sum()
+        fat_total = df_f['TotalProduto'].sum()
         ped_total = df_f['Numero_NF'].nunique()
         c1.metric("Faturamento Total", f"R$ {fat_total:,.2f}")
         c2.metric("Total de Pedidos", ped_total)
         c3.metric("Ticket Médio", f"R$ {(fat_total/ped_total if ped_total > 0 else 0):,.2f}")
 
         st.subheader("🏆 Ranking de Clientes")
-        rank = df_f.groupby('RazaoSocial').agg({'PrecoQtdXItem': 'sum', 'Numero_NF': 'nunique'}).reset_index()
-        rank = rank.sort_values(by='PrecoQtdXItem', ascending=False).head(10)
-        st.bar_chart(rank.set_index('RazaoSocial')['PrecoQtdXItem'])
+        rank = df_f.groupby('RazaoSocial').agg({'TotalProduto': 'sum', 'Numero_NF': 'nunique'}).reset_index()
+        rank = rank.sort_values(by='TotalProduto', ascending=False).head(10)
+        st.bar_chart(rank.set_index('RazaoSocial')['TotalProduto'])
         st.dataframe(rank, use_container_width=True)
 
     # ---------------------------
@@ -245,7 +245,7 @@ if vendas is not None:
         
         df_i = vendas[vendas['Vendedor'].isin(v_inat)].copy()
         if not df_i.empty:
-            res = df_i.groupby(['RazaoSocial', 'Vendedor', 'Estado']).agg({'DataEmissao': 'max', 'PrecoQtdXItem': 'sum'}).reset_index()
+            res = df_i.groupby(['RazaoSocial', 'Vendedor', 'Estado']).agg({'DataEmissao': 'max', 'TotalProduto': 'sum'}).reset_index()
             res['Dias_Inativo'] = (datetime.now() - res['DataEmissao']).dt.days
             final = res[res['Dias_Inativo'] >= d_limite].sort_values('Dias_Inativo', ascending=False)
             st.dataframe(final, use_container_width=True)
@@ -325,6 +325,7 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
