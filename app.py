@@ -67,14 +67,14 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # 3. INTERFACE E NAVEGAÇÃO
 # ===============================
 st.sidebar.title("🛡️ MEDTEXTIL CRM")
-menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
+menu = st.sidebar.radio("Navegação", ["📊 Vendas", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if vendas is not None:
     # ---------------------------
-    # MÓDULO 1: DASHBOARD GERAL
+    # MÓDULO 1: Vendas GERAL
     # ---------------------------
-    if menu == "📊 Dashboard":
-        st.title("📊 Dashboard de Performance")
+    if menu == "📊 Vendas":
+        st.title("📊 Vendas de Performance")
         with st.sidebar:
             st.subheader("Filtros")
             anos = sorted(vendas['DataEmissao'].dt.year.dropna().unique().astype(int), reverse=True)
@@ -244,7 +244,7 @@ for i, item in enumerate(st.session_state.carrinho):
         with tab_edit:
             st.subheader("Gestão de Funil e KPIs")
             if not st.session_state.df_leads_ativa.empty:
-                # Mini dashboard com os dados que você acabou de preencher
+                # Mini Vendas com os dados que você acabou de preencher
                 c1, c2 = st.columns(2)
                 c1.metric("Total de Leads", len(st.session_state.df_leads_ativa))
                 
@@ -258,6 +258,7 @@ for i, item in enumerate(st.session_state.carrinho):
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
