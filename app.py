@@ -10,7 +10,7 @@ st.set_page_config(page_title="CRM Med Mais - Pro", layout="wide")
 @st.cache_data
 def carregar_dados():
     try:
-        vendas = pd.read_excel("dados/CONSULTA VENDEDORES.xlsx")
+        vendas = pd.read_excel("dados/CONSULTA_VENDEDORES.xlsx")
         produtos = pd.read_excel("dados/Produtos_Agrupados_Completos_conciliados.xlsx", sheet_name='CONCILIADA')
         precos = pd.read_excel("dados/TABELAS_NE.xlsx", sheet_name='TAB 5%')
         
@@ -36,7 +36,7 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # ===============================
 # 2. INTERFACE E NAVEGAÇÃO
 # ===============================
-st.sidebar.title("🛡️ MED MAIS CRM")
+st.sidebar.title("🛡️ MEDTEXTIL CRM")
 menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade"])
 
 # ---------------------------
@@ -64,7 +64,7 @@ if menu == "📊 Dashboard":
 
     # --- KPI's Principais ---
     c1, c2, c3 = st.columns(3)
-    faturamento_total = df_f['PrecoQtdXItem'].sum()
+    faturamento_total = df_f['TotalProduto2'].sum()
     total_pedidos = df_f['Numero_NF'].nunique()
     ticket_medio = faturamento_total / total_pedidos if total_pedidos > 0 else 0
     
@@ -79,7 +79,7 @@ if menu == "📊 Dashboard":
     
     # Agrupamento por Cliente
     ranking_clientes = df_f.groupby('RazaoSocial').agg({
-        'PrecoQtdXItem': 'sum',
+        'TotalProduto2': 'sum',
         'Numero_NF': 'nunique'
     }).reset_index()
     
@@ -108,7 +108,7 @@ if menu == "📊 Dashboard":
     # --- EVOLUÇÃO MENSAL ---
     st.subheader("📈 Evolução Mensal de Vendas")
     df_f['Mes_Ano'] = df_f['DataEmissao'].dt.strftime('%Y-%m')
-    vendas_mensais = df_f.groupby('Mes_Ano')['PrecoQtdXItem'].sum()
+    vendas_mensais = df_f.groupby('Mes_Ano')['TotalProduto2'].sum()
     st.line_chart(vendas_mensais)
 
 # ---------------------------
@@ -325,7 +325,7 @@ elif menu == "🚨 Inatividade":
         # Usamos as colunas extraídas do seu arquivo de vendas [cite: 6]
         res = df_i.groupby(['RazaoSocial', 'Vendedor', 'Estado']).agg({
             'DataEmissao': 'max', 
-            'PrecoQtdXItem': 'sum'
+            'TotalProduto2': 'sum'
         }).reset_index()
         
         # Remove linhas onde a data é inválida
@@ -341,14 +341,14 @@ elif menu == "🚨 Inatividade":
             # Métricas de Resumo
             c1, c2 = st.columns(2)
             c1.metric("Clientes Inativos", len(final))
-            c2.metric("Faturamento em Risco", f"R$ {final['PrecoQtdXItem'].sum():,.2f}")
+            c2.metric("Faturamento em Risco", f"R$ {final['TotalProduto2'].sum():,.2f}")
             
             # Exibição da Tabela
             st.dataframe(
-                final[['RazaoSocial', 'Vendedor', 'Estado', 'DataEmissao', 'Dias_Inativo', 'PrecoQtdXItem']],
+                final[['RazaoSocial', 'Vendedor', 'Estado', 'DataEmissao', 'Dias_Inativo', 'TotalProduto2']],
                 column_config={
                     "DataEmissao": st.column_config.DateColumn("Última Compra"),
-                    "PrecoQtdXItem": st.column_config.NumberColumn("Valor Histórico", format="R$ %.2f"),
+                    "TotalProduto2": st.column_config.NumberColumn("Valor Histórico", format="R$ %.2f"),
                     "Dias_Inativo": st.column_config.NumberColumn("Dias Parado", format="%d ⚠️")
                 },
                 use_container_width=True,
@@ -358,6 +358,7 @@ elif menu == "🚨 Inatividade":
             st.info(f"✅ Nenhum cliente está inativo há mais de {d_limite} dias para os vendedores selecionados.")
     else:
         st.warning("⚠️ Não foram encontrados dados de vendas para os vendedores selecionados.")
+
 
 
 
