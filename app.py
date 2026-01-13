@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# 1. CONFIGURAÇÃO DA PÁGINA (Padrão Web Consolidado)
+# 1. CONFIGURAÇÃO DA PÁGINA (Mantido conforme original)
 st.set_page_config(
     page_title="CRM MedTextil - Pro", 
     layout="wide", 
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # ===============================
-# 2. CARREGAMENTO DOS DADOS (ESTRUTURA ORIGINAL)
+# 2. CARREGAMENTO DOS DADOS (INTACTO COMO ANTES)
 # ===============================
 @st.cache_data
 def carregar_dados():
@@ -66,7 +66,7 @@ menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🛒 Pedidos", "🚨 
 
 if Dashboard is not None:
     # ---------------------------
-    # MÓDULO 1: Dashboard (MANTIDO)
+    # MÓDULO 1: Dashboard GERAL (CONSOLIDADO E INTACTO)
     # ---------------------------
     if menu == "📊 Dashboard":
         st.title("📊 Dashboard de Performance")
@@ -96,113 +96,110 @@ if Dashboard is not None:
         st.dataframe(rank, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 2: Pedidos (NOVA LÓGICA DE SINCRONIZAÇÃO)
+    # MÓDULO 2: PEDIDOS (ALTERADO CONFORME SOLICITADO)
     # ---------------------------
     elif menu == "🛒 Pedidos":
-        st.title("🛒 Módulo de Pedidos e Propostas")
+        st.title("🛒 Emissão de Proposta Comercial")
 
-        # CABEÇALHO DO CLIENTE
+        # 1. Informações do Cliente
         with st.container(border=True):
-            st.subheader("👤 Cadastro / Seleção de Cliente")
-            sel_c = st.selectbox("Buscar Cliente Existente", [""] + sorted(Dashboard['RazaoSocial'].unique()))
-            
-            dados_c = {"nome": "", "cnpj": "", "fone": "", "email": "", "end": "", "fantasia": ""}
-            if sel_c:
-                inf = Dashboard[Dashboard['RazaoSocial'] == sel_c].iloc[0]
-                dados_c = {
-                    "nome": sel_c, "cnpj": str(inf.get('CNPJ', '')),
-                    "fone": str(inf.get('Telefone', '')), "email": str(inf.get('Email NF-e', '')),
-                    "end": f"{inf.get('Endereço', '')}", "fantasia": str(inf.get('Nome Fantasia', ''))
-                }
+            st.subheader("👤 Identificação")
+            sel_cli = st.selectbox("Buscar na Base", [""] + sorted(Dashboard['RazaoSocial'].unique()))
+            dados_c = {"n": "", "cnpj": "", "fone": "", "end": "", "fant": ""}
+            if sel_cli:
+                inf = Dashboard[Dashboard['RazaoSocial'] == sel_cli].iloc[0]
+                dados_c = {"n": sel_cli, "cnpj": str(inf.get('CNPJ', '')), "fone": str(inf.get('Telefone', '')), "end": str(inf.get('Endereço', '')), "fant": str(inf.get('Nome Fantasia', ''))}
             
             c1, c2 = st.columns(2)
-            nome_c = c1.text_input("Razão Social", value=dados_c['nome'])
-            cnpj_c = c2.text_input("CNPJ", value=dados_c['cnpj'])
-            end_c = c1.text_input("Endereço", value=dados_c['end'])
-            fone_c = c2.text_input("Telefone", value=dados_c['fone'])
+            cli_nome = c1.text_input("Cliente", value=dados_c['n'])
+            cli_cnpj = c2.text_input("CNPJ", value=dados_c['cnpj'])
+            cli_fone = c1.text_input("Fone", value=dados_c['fone'])
+            cli_end = c2.text_input("Endereço", value=dados_c['end'])
 
         st.divider()
 
-        # PREPARAÇÃO PRODUTOS
-        df_base = produtos.merge(precos[['ID_COD', 'PRECO', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
-        df_base['PRECO'] = df_base['PRECO'].fillna(0.0)
+        # 2. Itens com FILTRO MESTRE FUNCIONAL
+        df_base = produtos.merge(precos[['ID_COD', 'PRECO', 'GRAMAT']], on='ID_COD', how='left').fillna(0)
+        lista_codigos = sorted(df_base['ID_COD'].unique())
 
-        if st.button("➕ Adicionar Novo Item"):
-            st.session_state.carrinho.append({"id": datetime.now().timestamp()})
+        if st.button("➕ Adicionar Produto"):
+            st.session_state.carrinho.append({"cod": lista_codigos[0], "qtd": 1})
             st.rerun()
 
         total_proposta = 0.0
-        itens_para_pdf = []
+        itens_pdf = []
 
-        # COLUNAS DO CARRINHO
         for i, item in enumerate(st.session_state.carrinho):
             with st.container(border=True):
                 col_cod, col_prod, col_peso, col_cx, col_pr, col_qtd, col_tot = st.columns([1, 2.5, 0.8, 1, 1.2, 0.8, 1.2])
                 
-                # CÓDIGO MESTRE
-                cod_sel = col_cod.selectbox("Cód.", sorted(df_base['ID_COD'].unique()), key=f"cod_{i}")
+                # FILTRO MESTRE: O código altera tudo
+                idx_atual = lista_codigos.index(item['cod'])
+                novo_cod = col_cod.selectbox("Cód.", lista_codigos, index=idx_atual, key=f"sel_{i}")
                 
-                # SINCRONIZAÇÃO AUTOMÁTICA
-                row = df_base[df_base['ID_COD'] == cod_sel].iloc[0]
-                
-                prod_txt = col_prod.text_input("Produto", value=row['DESCRICAONF'], key=f"prod_{i}")
-                peso_txt = col_peso.text_input("Peso", value=str(row.get('GRAMAT', 'S/I')), key=f"peso_{i}")
-                cx_txt = col_cx.text_input("Cx Emb.", value=str(row.get('CX_EMB', 1)), key=f"cx_{i}")
-                preco_val = col_pr.number_input("Preço (R$)", value=float(row['PRECO']), format="%.2f", key=f"pr_{i}")
-                qtd_val = col_qtd.number_input("Qtd", min_value=1, value=1, key=f"qtd_{i}")
-                
-                subtotal = preco_val * qtd_val
-                total_proposta += subtotal
-                col_tot.write(f"**Total**\nR$ {subtotal:,.2f}")
-
-                itens_para_pdf.append({
-                    "COD": cod_sel, "PRODUTO": prod_txt, "PESO": peso_txt, 
-                    "CX": cx_txt, "QTDE": qtd_val, "VALOR": preco_val, "TOTAL": subtotal
-                })
-
-                if st.button("🗑️", key=f"del_{i}"):
-                    st.session_state.carrinho.pop(i)
+                if novo_cod != item['cod']:
+                    st.session_state.carrinho[i]['cod'] = novo_cod
                     st.rerun()
 
-        # BOTÕES DE AÇÃO E PDF
+                # Busca automática dos dados baseada no código
+                row = df_base[df_base['ID_COD'] == novo_cod].iloc[0]
+                
+                prod_txt = col_prod.text_input("Produto", value=row['DESCRICAONF'], key=f"p_{i}")
+                peso_txt = col_peso.text_input("Peso", value=str(row.get('GRAMAT', '')), key=f"w_{i}")
+                cx_txt = col_cx.text_input("Caixa", value=str(row.get('CX_EMB', 1)), key=f"x_{i}")
+                pr_val = col_pr.number_input("Valor", value=float(row['PRECO']), format="%.2f", key=f"v_{i}")
+                qtd_val = col_qtd.number_input("Qtd", min_value=1, value=item['qtd'], key=f"q_{i}")
+                st.session_state.carrinho[i]['qtd'] = qtd_val
+
+                sub = pr_val * qtd_val
+                total_proposta += sub
+                col_tot.write(f"R$ {sub:,.2f}")
+
+                itens_pdf.append({"COD": novo_cod, "PROD": prod_txt, "PESO": peso_txt, "CX": cx_txt, "QTD": qtd_val, "VAL": pr_val, "TOT": sub})
+
+                if st.button("🗑️", key=f"rem_{i}"):
+                    st.session_state.carrinho.pop(i); st.rerun()
+
+        # 3. LAYOUT DE IMPRESSÃO FIEL AO PDF
         if total_proposta > 0:
-            st.subheader(f"Total Geral: R$ {total_proposta:,.2f}")
-            c1, c2 = st.columns(2)
-            
-            html_proposta = f"""
-            <div style="font-family: Arial; padding: 30px; border: 1px solid #000; width: 850px; margin: auto;">
-                <div style="text-align: center; border-bottom: 2px solid #000;">
-                    <h1 style="margin:0; color: #d32f2f;">MEDTEXTIL</h1>
-                    <p style="margin:0;">ULTRA TEXTIL INDUSTRIA E COMERCIO DE PRODUTOS HOSPITALARES LTDA</p>
-                    <p style="font-size: 11px;">40.357.820/0001-50 | comercial.ultratextilpb@gmail.com | (83) 3233-9798</p>
-                    <h3 style="background: #eee; padding: 5px; border: 1px solid #000;">PROPOSTA COMERCIAL</h3>
+            st.subheader(f"Total: R$ {total_proposta:,.2f}")
+            html_fiel = f"""
+            <div style="font-family: Arial; padding: 20px; border: 1px solid #000; width: 800px; margin: auto;">
+                <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                    <h2 style="margin:0; color: #d32f2f;">MEDTEXTIL</h2>
+                    <p style="margin:0; font-size: 12px; font-weight: bold;">produto têxtil hospitalar</p>
+                    <p style="margin:0; font-size: 11px;">ULTRA TEXTIL IND E COM DE PROD HOSP LTDA | 40.357.820/0001-50</p>
+                    <p style="margin:0; font-size: 10px;">comercial.ultratextilpb@gmail.com | (83) 3233-9798</p>
                 </div>
-                <div style="margin-top: 15px; font-size: 12px;">
-                    <strong>Representante:</strong> Rosselic Marinho | <strong>CPF:</strong> 338.610.054-68<br>
-                    <strong>Cliente:</strong> {nome_c}<br>
-                    <strong>CNPJ:</strong> {cnpj_c} | <strong>Endereço:</strong> {end_c}
+                <div style="margin-top: 20px; font-size: 11px;">
+                    <table style="width: 100%;">
+                        <tr>
+                            <td><strong>Representante:</strong> Rosselic Marinho<br><strong>CPF:</strong> 338.610.054-68</td>
+                            <td style="text-align: right;"><strong>Cliente:</strong> {cli_nome}<br><strong>CNPJ:</strong> {cli_cnpj}</td>
+                        </tr>
+                    </table>
                 </div>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px;">
-                    <tr style="background: #eee;">
-                        <th style="border:1px solid #000;">COD</th><th style="border:1px solid #000;">PRODUTO</th>
-                        <th style="border:1px solid #000;">PESO</th><th style="border:1px solid #000;">CX</th>
-                        <th style="border:1px solid #000;">QTDE</th><th style="border:1px solid #000;">VALOR</th>
-                        <th style="border:1px solid #000;">TOTAL</th>
-                    </tr>
-                    {"".join([f"<tr><td style='border:1px solid #000; padding:4px;'>{it['COD']}</td><td style='border:1px solid #000;'>{it['PRODUTO']}</td><td style='border:1px solid #000;'>{it['PESO']}</td><td style='border:1px solid #000;'>{it['CX']}</td><td style='border:1px solid #000;'>{it['QTDE']}</td><td style='border:1px solid #000;'>{it['VALOR']:.2f}</td><td style='border:1px solid #000;'>{it['TOTAL']:.2f}</td></tr>" for it in itens_para_pdf])}
+                <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px;">
+                    <thead>
+                        <tr style="background: #eee;">
+                            <th style="border: 1px solid #000;">COD</th><th style="border: 1px solid #000;">PRODUTO</th>
+                            <th style="border: 1px solid #000;">PESO</th><th style="border: 1px solid #000;">CAIXA</th>
+                            <th style="border: 1px solid #000;">QTDE</th><th style="border: 1px solid #000;">VALOR</th>
+                            <th style="border: 1px solid #000;">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join([f"<tr><td style='border:1px solid #000; padding:4px;'>{it['COD']}</td><td style='border:1px solid #000;'>{it['PROD']}</td><td style='border:1px solid #000; text-align:center;'>{it['PESO']}</td><td style='border:1px solid #000; text-align:center;'>{it['CX']}</td><td style='border:1px solid #000; text-align:center;'>{it['QTD']}</td><td style='border:1px solid #000; text-align:right;'>{it['VAL']:.2f}</td><td style='border:1px solid #000; text-align:right;'>{it['TOT']:.2f}</td></tr>" for it in itens_pdf])}
+                    </tbody>
                 </table>
-                <h3 style="text-align: right;">TOTAL: R$ {total_proposta:,.2f}</h3>
+                <h3 style="text-align: right; margin-top: 20px;">VALOR TOTAL: R$ {total_proposta:,.2f}</h3>
             </div>
             """
-            
-            with c1:
-                if st.button("🖨️ Imprimir Proposta"):
-                    components.html(f"{html_proposta}<script>window.print();</script>", height=600)
-            with c2:
-                st.link_button("📱 Enviar WhatsApp", f"https://wa.me/{fone_c.replace(' ','')}?text=Proposta%20MedTextil")
+            if st.button("🖨️ Imprimir Proposta"):
+                components.html(f"{html_fiel}<script>window.print();</script>", height=800)
 
     # ---------------------------
-    # MÓDULO 3: Inatividade (MANTIDO)
+    # MÓDULO 3: INATIVIDADE (CONSOLIDADO E INTACTO)
     # ---------------------------
     elif menu == "🚨 Inatividade":
         st.title("🚨 Controle de Inatividade")
@@ -219,10 +216,10 @@ if Dashboard is not None:
             st.dataframe(final, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 4: Expansão (MANTIDO)
+    # MÓDULO 4: EXPANSÃO PR (CONSOLIDADO E INTACTO)
     # ---------------------------
     elif menu == "🚀 Expansão PR":
-        st.title("🚀 Plano de Expansão 2026")
+        st.title("🚀 Plano de Expansão PR 2026")
         if expansao:
             for sheet, df in expansao.items():
                 st.subheader(f"Planilha: {sheet}")
