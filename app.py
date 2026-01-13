@@ -373,70 +373,82 @@ if Dashboard is not None:
         for i, item in enumerate(st.session_state.carrinho):
             st.markdown(f"### Item {i+1}")
             
-            # Labels das colunas
-            col_busca, col_peso, col_cx, col_qtd, col_preco, col_total, col_rem = st.columns([5, 1.2, 1.5, 1, 1.5, 1.5, 0.8])
+            # Linha 1: Busca por Código ou Nome
+            col_tipo, col_busca = st.columns([1, 5])
+            tipo_busca = col_tipo.radio("Buscar por:", ["Código", "Nome"], key=f"tipo_{i}", horizontal=True, label_visibility="collapsed")
             
-            col_busca.markdown("**Produto (Buscar por Código ou Nome)**")
-            col_peso.markdown("**Peso**")
-            col_cx.markdown("**Cx Embarque**")
-            col_qtd.markdown("**Qtde**")
-            col_preco.markdown("**Valor Unit.**")
-            col_total.markdown("**Total**")
+            dados_item = None
             
-            # Linha de inputs
-            col_busca2, col_peso2, col_cx2, col_qtd2, col_preco2, col_total2, col_rem2 = st.columns([5, 1.2, 1.5, 1, 1.5, 1.5, 0.8])
+            if tipo_busca == "Código":
+                cod_digitado = col_busca.text_input("Digite o Código do Produto", key=f"cod_{i}", placeholder="Ex: 12345")
+                if cod_digitado:
+                    produto_encontrado = df_comb[df_comb['ID_COD'] == cod_digitado]
+                    if not produto_encontrado.empty:
+                        dados_item = produto_encontrado.iloc[0]
+                        item["produto_selecionado"] = dados_item
+                    else:
+                        col_busca.warning("❌ Código não encontrado")
+            else:  # Buscar por Nome
+                opcoes_busca = [""] + [f"{row['ID_COD']} - {row['DESCRICAONF']}" for _, row in df_comb.iterrows()]
+                busca = col_busca.selectbox(
+                    "Selecione o Produto",
+                    options=opcoes_busca,
+                    key=f"busca_{i}",
+                    label_visibility="collapsed",
+                    index=0
+                )
+                if busca and busca != "":
+                    cod_selecionado = busca.split(" - ")[0]
+                    produto_encontrado = df_comb[df_comb['ID_COD'] == cod_selecionado]
+                    if not produto_encontrado.empty:
+                        dados_item = produto_encontrado.iloc[0]
+                        item["produto_selecionado"] = dados_item
             
-            # Criar lista de opções para busca (código + nome)
-            opcoes_busca = [""] + [f"{row['ID_COD']} - {row['DESCRICAONF']}" for _, row in df_comb.iterrows()]
-            
-            # Selectbox para buscar produto
-            busca = col_busca2.selectbox(
-                "Buscar",
-                options=opcoes_busca,
-                key=f"busca_{i}",
-                label_visibility="collapsed",
-                index=0
-            )
-            
-            if busca and busca != "":
-                # Extrair código da seleção
-                cod_selecionado = busca.split(" - ")[0]
+            # Linha 2: Detalhes do Produto (se encontrado)
+            if dados_item is not None:
+                st.success(f"✅ **Produto:** {dados_item['DESCRICAONF']}")
+                st.caption(f"📦 **Código:** {dados_item['ID_COD']} | **Marca:** {dados_item['LINHA']} | **Gramatura:** {dados_item['GRAMAT']}")
                 
-                # Buscar produto pelo código
-                produto_encontrado = df_comb[df_comb['ID_COD'] == cod_selecionado]
+                # Linha 3: Labels das colunas
+                col_peso, col_cx, col_qtd, col_preco, col_total, col_rem = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
                 
-                if not produto_encontrado.empty:
-                    dados_item = produto_encontrado.iloc[0]
-                    
-                    # Armazenar produto selecionado
-                    item["produto_selecionado"] = dados_item
-                    
-                    peso = col_peso2.text_input("Peso", value=str(dados_item.get('GRAMAT', '-')), key=f"peso_{i}", label_visibility="collapsed")
-                    cx_e = col_cx2.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"cx_{i}", label_visibility="collapsed")
-                    qtd = col_qtd2.number_input("Qtd", min_value=1, value=1, key=f"qtd_{i}", label_visibility="collapsed")
-                    pr_u = col_preco2.number_input("Preço", value=float(dados_item['PRECO']), key=f"preco_{i}", format="%.2f", label_visibility="collapsed")
-                    
-                    sub = pr_u * qtd
-                    total_proposta += sub
-                    
-                    col_total2.metric("", f"R$ {sub:,.2f}")
-                    
-                    # Informações adicionais
-                    st.caption(f"📦 **Código:** {dados_item['ID_COD']} | **Marca:** {dados_item['LINHA']} | **Gramatura:** {dados_item['GRAMAT']}")
-                    
-                    itens_final.append({
-                        "COD": dados_item['ID_COD'], 
-                        "PRODUTO": dados_item['DESCRICAONF'],
-                        "PESO": peso,
-                        "CX": cx_e, 
-                        "QTDE": qtd,
-                        "VALOR": pr_u, 
-                        "TOTAL": sub
-                    })
-            
-            if col_rem2.button("🗑️", key=f"rem_{i}"):
-                st.session_state.carrinho.pop(i)
-                st.rerun()
+                col_peso.markdown("**Peso**")
+                col_cx.markdown("**Cx Embarque**")
+                col_qtd.markdown("**Qtde**")
+                col_preco.markdown("**Valor Unit.**")
+                col_total.markdown("**Total**")
+                
+                # Linha 4: Inputs
+                col_peso2, col_cx2, col_qtd2, col_preco2, col_total2, col_rem2 = st.columns([1.5, 1.5, 1.2, 1.8, 1.8, 0.8])
+                
+                peso = col_peso2.text_input("Peso", value=str(dados_item.get('GRAMAT', '-')), key=f"peso_{i}", label_visibility="collapsed")
+                cx_e = col_cx2.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"cx_{i}", label_visibility="collapsed")
+                qtd = col_qtd2.number_input("Qtd", min_value=1, value=1, key=f"qtd_{i}", label_visibility="collapsed")
+                pr_u = col_preco2.number_input("Preço", value=float(dados_item['PRECO']), key=f"preco_{i}", format="%.2f", label_visibility="collapsed")
+                
+                sub = pr_u * qtd
+                total_proposta += sub
+                
+                col_total2.metric("", f"R$ {sub:,.2f}")
+                
+                itens_final.append({
+                    "COD": dados_item['ID_COD'], 
+                    "PRODUTO": dados_item['DESCRICAONF'],
+                    "PESO": peso,
+                    "CX": cx_e, 
+                    "QTDE": qtd,
+                    "VALOR": pr_u, 
+                    "TOTAL": sub
+                })
+                
+                if col_rem2.button("🗑️", key=f"rem_{i}"):
+                    st.session_state.carrinho.pop(i)
+                    st.rerun()
+            else:
+                # Botão remover mesmo sem produto selecionado
+                if st.button("🗑️ Remover Item", key=f"rem_empty_{i}"):
+                    st.session_state.carrinho.pop(i)
+                    st.rerun()
             
             st.divider()
 
