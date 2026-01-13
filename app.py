@@ -19,7 +19,7 @@ def carregar_dados():
     
     try:
         # Arquivos Originais
-        vendas = pd.read_excel("dados/CONSULTA VENDEDORES.xlsx")
+        vendas = pd.read_excel("dados/CONSULTA_VENDEDORES.xlsx")
         
         try:
             produtos = pd.read_excel("dados/Produtos_Agrupados_Completos_conciliados.xlsx", sheet_name='CONCILIADA')
@@ -325,6 +325,7 @@ if vendas is not None:
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
