@@ -488,4 +488,28 @@ if Dashboard is not None:
 
         with tab_view:
             st.dataframe(st.session_state.df_leads_ativa, use_container_width=True, hide_index=True)
-            if not st.session_state.df_leads
+            if not st.session_state.df_leads_ativa.empty:
+                csv = st.session_state.df_leads_ativa.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Baixar Leads", csv, "leads.csv", "text/csv")
+
+        with tab_add:
+            with st.form("novo_lead_form", clear_on_submit=True):
+                c1, c2 = st.columns(2)
+                emp_n = c1.text_input("Empresa")
+                cid_n = c2.text_input("Cidade")
+                seg_n = c1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
+                con_n = c2.text_input("Contato")
+                dor_n = st.text_area("Necessidade")
+                if st.form_submit_button("✅ Salvar Lead"):
+                    if emp_n:
+                        novo = {"Data de Entrada": datetime.now().strftime("%d/%m/%Y"), "Empresa": emp_n, "Cidade": cid_n, "Segmento": seg_n, "Contato": con_n, "Status do Lead": "Prospecção", "Dor Principal": dor_n}
+                        st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo])], ignore_index=True)
+                        st.success("Lead salvo!")
+                        st.rerun()
+
+        with tab_edit:
+            if not st.session_state.df_leads_ativa.empty:
+                emp_edit = st.selectbox("Selecionar Lead", st.session_state.df_leads_ativa['Empresa'].unique())
+                status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
+                if st.button("Atualizar Histórico"):
+                    st.toast(f"Status de {emp_edit} atualizado!", icon="🚀")
