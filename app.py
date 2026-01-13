@@ -67,7 +67,7 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # 3. INTERFACE E NAVEGAÇÃO
 # ===============================
 st.sidebar.title("🛡️ MEDTEXTIL CRM")
-menu = st.sidebar.radio("Navegação", ["📊 Vendas", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
+menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if vendas is not None:
     # ---------------------------
@@ -258,6 +258,7 @@ for i, item in enumerate(st.session_state.carrinho):
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
