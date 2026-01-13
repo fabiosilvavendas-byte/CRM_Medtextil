@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# 1. CONFIGURAÇÃO DA PÁGINA (Mantendo o ícone para o app no iPhone)
+# 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
     page_title="CRM MedTextil - Pro", 
     layout="wide", 
@@ -12,12 +12,11 @@ st.set_page_config(
 )
 
 # ===============================
-# 2. CARREGAMENTO DOS DADOS (SISTEMA ROBUSTO)
+# 2. CARREGAMENTO DOS DADOS
 # ===============================
 @st.cache_data
 def carregar_dados():
     try:
-        # Arquivos Originais
         Dashboard = pd.read_excel("dados/CONSULTA_VENDEDORES.xlsx")
         
         try:
@@ -30,13 +29,11 @@ def carregar_dados():
         except:
             precos = pd.read_excel("dados/TABELAS_NE.xlsx")
             
-        # NOVO ARQUIVO DE EXPANSÃO
         try:
             expansao = pd.read_excel("dados/CRM_Expansao_PR_2026_COMPLETO.xlsx", sheet_name=None)
         except:
             expansao = None
         
-        # Padronização de Colunas (ID_COD)
         for df in [produtos, precos]:
             df.columns = df.columns.str.strip()
             if 'ID_COD' not in df.columns:
@@ -60,7 +57,6 @@ def carregar_dados():
 Dashboard, produtos, precos, expansao = carregar_dados()
 vendas = Dashboard
 if "carrinho" not in st.session_state: st.session_state.carrinho = []
-if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = []
 
 # ===============================
 # 3. INTERFACE E NAVEGAÇÃO
@@ -100,75 +96,142 @@ if Dashboard is not None:
         st.dataframe(rank, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
+    # MÓDULO 2: PEDIDOS (NOVO MÓDULO REESTRUTURADO)
     # ---------------------------
     elif menu == "🛒 Pedidos":
-        # Ajuste para buscar LINHA e GRAMAT da planilha de Preços (TABELAS_NE)
-        cols_precos = ['ID_COD', 'PRECO']
-        if 'LINHA' in precos.columns: cols_precos.append('LINHA')
-        if 'GRAMAT' in precos.columns: cols_precos.append('GRAMAT')
+        st.title("🛒 Emissão de Proposta Comercial")
 
-        df_comb = produtos.merge(precos[cols_precos], on='ID_COD', how='left')
+        # SEÇÃO 1: CADASTRO/BUSCA DE CLIENTE
+        st.subheader("👤 Informações do Cliente")
+        modo_c = st.radio("Origem do Cliente", ["Buscar na Base", "Novo Cadastro"], horizontal=True)
+        dados_c = {"nome": "", "cnpj": "", "endereco": "", "telefone": "", "email": ""}
+
+        if modo_c == "Buscar na Base":
+            lista_clientes = sorted(Dashboard['RazaoSocial'].unique())
+            sel_c = st.selectbox("Selecione o Cliente", [""] + lista_clientes)
+            if sel_c:
+                # Busca automática nas colunas da planilha Consulta Vendedores
+                inf = Dashboard[Dashboard['RazaoSocial'] == sel_c].iloc[0]
+                dados_c = {
+                    "nome": sel_c,
+                    "cnpj": str(inf.get('CNPJ', 'Não informado')),
+                    "endereco": f"{inf.get('Endereço', 'Não informado')}, {inf.get('Cidade', '')}",
+                    "telefone": str(inf.get('Telefone', 'Não informado')),
+                    "email": str(inf.get('Email', 'Não informado'))
+                }
+        else:
+            c1, c2 = st.columns(2)
+            dados_c['nome'] = c1.text_input("Razão Social")
+            dados_c['cnpj'] = c2.text_input("CNPJ")
+            dados_c['endereco'] = c1.text_input("Endereço Completo")
+            dados_c['telefone'] = c2.text_input("Telefone")
+
+        st.divider()
+
+        # SEÇÃO 2: ITENS DO PEDIDO
+        st.subheader("📦 Itens do Pedido")
+        # Prepara base cruzada (Sincroniza precos com LINHA e GRAMAT) [cite: 1, 2, 3]
+        df_comb = produtos.merge(precos[['ID_COD', 'PRECO', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
         df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-        df_comb['LINHA'] = df_comb['LINHA'].fillna('')
-        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
-
-        df_comb['DISPLAY'] = (
-            df_comb['ID_COD'].astype(str)
-            + " | "
-            + df_comb['DESCRICAONF'].astype(str)
-        )
-
-        total_proposta = 0.0
-        itens_final = []
 
         if st.button("➕ Adicionar Novo Item"):
             st.session_state.carrinho.append({"id": len(st.session_state.carrinho)})
             st.rerun()
 
+        total_pedido = 0.0
+        itens_print = []
+
         for i, item in enumerate(st.session_state.carrinho):
-            with st.container():
-                c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
-                escolha = c_busca.selectbox(f"Item {i+1}", options=sorted(df_comb['DISPLAY'].unique()), key=f"sel_{i}")
+            with st.container(border=True):
+                # Layout solicitado: Cód, Produto, Cx, Preço, Qtd, Total
+                c_cod, c_prod, c_cx, c_pr, c_qtd, c_tot = st.columns([1.5, 3.5, 1, 1.2, 1, 1.2])
 
-                if escolha:
-                    dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
-                    st.caption(f"**Marca:** {dados_item['LINHA']} | **Gramatura:** {dados_item['GRAMAT']}")
+                # Seleção por Código
+                cod_sel = c_cod.selectbox("Cód.", sorted(df_comb['ID_COD'].unique()), key=f"c_{i}")
+                
+                # Sincronização automática
+                dados_p = df_comb[df_comb['ID_COD'] == cod_sel].iloc[0]
+                
+                prod_txt = c_prod.text_input("Produto", value=dados_p['DESCRICAONF'], key=f"p_{i}")
+                cx_val = c_cx.text_input("Cx", value=str(dados_p.get('CX_EMB', 1)), key=f"x_{i}")
+                pr_unit = c_pr.number_input("Unit.", value=float(dados_p['PRECO']), format="%.2f", key=f"v_{i}")
+                qtd_val = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
+                
+                subtotal = pr_unit * qtd_val
+                total_pedido += subtotal
+                c_tot.metric("Valor", f"R$ {subtotal:,.2f}")
 
-                    cx_e = c_cx.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"x_{i}")
-                    pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
-                    qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
-                    sub = pr_u * qtd
-                    total_proposta += sub
+                itens_print.append({
+                    "COD": cod_sel, "PRODUTO": prod_txt, "CX": cx_val, 
+                    "QTDE": qtd_val, "VALOR": pr_unit, "TOTAL": subtotal
+                })
 
-                    itens_final.append({
-                        "COD": dados_item['ID_COD'], "PRODUTO": dados_item['DESCRICAONF'],
-                        "MARCA": dados_item['LINHA'], "GRAMATURA": dados_item['GRAMAT'],
-                        "CX": cx_e, "QTDE": qtd, "VALOR": pr_u, "TOTAL": sub
-                    })
-
-                if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
+                if st.button(f"🗑️ Remover Item {i+1}", key=f"r_{i}"):
                     st.session_state.carrinho.pop(i)
                     st.rerun()
 
         st.divider()
-        st.subheader(f"Total da Proposta: R$ {total_proposta:,.2f}")
+        st.subheader(f"💰 Total da Proposta: R$ {total_pedido:,.2f}")
 
-        if itens_final:
-            c_pdf, c_wa = st.columns(2)
-            if c_pdf.button("📄 Gerar PDF da Proposta"):
-                st.write("### Proposta Comercial")
-                st.table(pd.DataFrame(itens_final))
+        # SEÇÃO 3: PDF E WHATSAPP (CONFORME MODELO PDF)
+        if total_pedido > 0:
+            c1, c2 = st.columns(2)
             
-            if c_wa.button("📱 Enviar via WhatsApp"):
-                texto = f"Olá! Segue orçamento MedTextil no valor de R$ {total_proposta:,.2f}"
-                st.markdown(f"[Clique aqui para enviar](https://wa.me/?text={texto})")
+            # Estrutura HTML baseada no modelo "ULTRA TEXTIL" enviado [cite: 3, 4, 6]
+            html_proposta = f"""
+            <div style="border:1px solid #000; padding:20px; font-family: Arial, sans-serif;">
+                <div style="text-align:center;">
+                    <h2 style="margin:0; color:#d32f2f;">MEDTEXTIL</h2>
+                    <p style="margin:0; font-size:12px;">ULTRA TEXTIL IND E COM DE PROD HOSP LTDA</p>
+                    <p style="margin:0; font-size:11px;">CNPJ: 40.357.820/0001-50 | (83) 3233-9798</p>
+                    <h3 style="background:#eee; padding:5px; border:1px solid #000;">PROPOSTA COMERCIAL</h3>
+                </div>
+                <div style="margin: 20px 0; border:1px solid #ccc; padding:10px;">
+                    <strong>DADOS DO CLIENTE:</strong><br>
+                    <strong>Cliente:</strong> {dados_c['nome']}<br>
+                    <strong>CNPJ/CPF:</strong> {dados_c['cnpj']} | <strong>Fone:</strong> {dados_c['telefone']}<br>
+                    <strong>Endereço:</strong> {dados_c['endereco']}
+                </div>
+                <table style="width:100%; border-collapse: collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:#f2f2f2; border-bottom: 2px solid #000;">
+                            <th style="padding:5px; text-align:left;">COD</th>
+                            <th style="padding:5px; text-align:left;">PRODUTO</th>
+                            <th style="padding:5px; text-align:center;">CX</th>
+                            <th style="padding:5px; text-align:center;">QTDE</th>
+                            <th style="padding:5px; text-align:right;">VALOR</th>
+                            <th style="padding:5px; text-align:right;">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join([f"<tr style='border-bottom: 1px solid #ddd;'><td style='padding:5px;'>{it['COD']}</td><td style='padding:5px;'>{it['PRODUTO']}</td><td style='padding:5px; text-align:center;'>{it['CX']}</td><td style='padding:5px; text-align:center;'>{it['QTDE']}</td><td style='padding:5px; text-align:right;'>R$ {it['VALOR']:.2f}</td><td style='padding:5px; text-align:right;'>R$ {it['TOTAL']:.2f}</td></tr>" for it in itens_print])}
+                    </tbody>
+                </table>
+                <h3 style="text-align:right; margin-top:20px;">TOTAL FINAL: R$ {total_pedido:,.2f}</h3>
+                <div style="margin-top:30px; font-size:10px; color:#555;">
+                    <strong>DECLARAÇÕES:</strong><br>
+                    - Prazo de entrega: até 30 dias corridos.<br>
+                    - Validade da proposta: 60 dias.<br>
+                    - Garantia: substituição em até 5 dias úteis.<br>
+                    - Preços incluem todos os impostos.
+                </div>
+            </div>
+            """
+
+            with c1:
+                if st.button("📄 Visualizar Proposta (PDF)"):
+                    st.components.v1.html(html_proposta, height=800, scrolling=True)
+            
+            with c2:
+                msg_wa = f"Olá, segue proposta MedTextil para {dados_c['nome']} no valor total de R$ {total_pedido:,.2f}"
+                link_wa = f"https://wa.me/{dados_c['telefone'].replace('(','').replace(')','').replace('-','').replace(' ','')}?text={msg_wa}"
+                st.link_button("📱 Enviar via WhatsApp", link_wa)
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
     elif menu == "🚨 Inatividade":
-        st.title("🚨 Inatividade")
+        st.title("🚨 Controle de Inatividade")
         with st.sidebar:
             vendedores_inat = sorted([str(x) for x in vendas['Vendedor'].unique() if pd.notna(x)])
             v_inat = st.multiselect("Vendedores", vendedores_inat, default=vendedores_inat)
@@ -186,6 +249,7 @@ if Dashboard is not None:
     # ---------------------------
     elif menu == "🚀 Expansão PR":
         st.title("🚀 Plano de Expansão PR 2026")
+        
         if "df_leads_ativa" not in st.session_state:
             if expansao and 'Gestão de Leads' in expansao:
                 st.session_state.df_leads_ativa = expansao['Gestão de Leads'].copy()
@@ -221,17 +285,3 @@ if Dashboard is not None:
                 status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
                 if st.button("Atualizar Histórico"):
                     st.toast(f"Status de {emp_edit} atualizado!", icon="🚀")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
