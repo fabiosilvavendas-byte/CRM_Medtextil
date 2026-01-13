@@ -13,7 +13,7 @@ st.set_page_config(page_title="CRM Med Mais - Pro", layout="wide")
 def carregar_dados():
     try:
         # Carregamento dos arquivos
-        vendas = pd.read_excel("dados/CONSULTA VENDEDORES.xlsx")
+        vendas = pd.read_excel("dados/CONSULTA_VENDEDORES.xlsx")
         
         # Tentativa de carregar abas específicas, se falhar, pega a primeira
         try:
@@ -174,3 +174,4 @@ if vendas is not None:
             st.dataframe(final, use_container_width=True)
 else:
     st.warning("⚠️ Aguardando configuração dos arquivos no GitHub.")
+
