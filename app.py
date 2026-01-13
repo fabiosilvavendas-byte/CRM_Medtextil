@@ -100,71 +100,77 @@ if Dashboard is not None:
         st.bar_chart(rank.set_index('RazaoSocial')['TotalProduto2'])
         st.dataframe(rank, use_container_width=True)
 
-    # ---------------------------
-    # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
-    # ---------------------------
+  # ---------------------------
+# MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
+# ---------------------------
 if menu == "🛒 Pedidos":
-        df_comb = (
-            produtos
-            .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
-            .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
-        )
+    df_comb = (
+        produtos
+        .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
+        .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
+    )
 
-        df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-        df_comb['LINHA'] = df_comb['LINHA'].fillna('')
-        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
+    df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
+    df_comb['LINHA'] = df_comb['LINHA'].fillna('')
+    df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
 
-        df_comb['DISPLAY'] = (
-            df_comb['ID_COD'].astype(str)
-            + " | "
-            + df_comb['DESCRICAONF'].astype(str)
-        )
+    df_comb['DISPLAY'] = (
+        df_comb['ID_COD'].astype(str)
+        + " | "
+        + df_comb['DESCRICAONF'].astype(str)
+    )
 
-        total_proposta = 0.0
-        itens_final = []
+    total_proposta = 0.0
+    itens_final = []
 
-        for i, item in enumerate(st.session_state.carrinho):
-            with st.container():
-                c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
+    # Verificação de segurança para o carrinho
+    if 'carrinho' not in st.session_state:
+        st.session_state.carrinho = []
 
-                escolha = c_busca.selectbox(
-                    f"Item {i+1}",
-                    options=sorted(df_comb['DISPLAY'].unique()),
-                    key=f"sel_{i}"
+    for i, item in enumerate(st.session_state.carrinho):
+        with st.container():
+            c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
+
+            escolha = c_busca.selectbox(
+                f"Item {i+1}",
+                options=sorted(df_comb['DISPLAY'].unique()),
+                key=f"sel_{i}"
+            )
+
+            if escolha:
+                dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
+
+                st.caption(
+                    f"**Marca:** {dados_item['LINHA']} | "
+                    f"**Gramatura:** {dados_item['GRAMAT']}"
                 )
 
-                if escolha:
-                    dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
+                cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
+                pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
+                qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
 
-                    st.caption(
-                        f"**Marca:** {dados_item['LINHA']} | "
-                        f"**Gramatura:** {dados_item['GRAMAT']}"
-                    )
+                sub = pr_u * qtd
+                total_proposta += sub
 
-                    cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
-                    pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
-                    qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
+                itens_final.append({
+                    "COD": dados_item['ID_COD'],
+                    "PRODUTO": dados_item['DESCRICAONF'],
+                    "MARCA": dados_item['LINHA'],
+                    "GRAMATURA": dados_item['GRAMAT'],
+                    "CX": cx_e,
+                    "QTDE": qtd,
+                    "VALOR": pr_u,
+                    "TOTAL": sub
+                })
 
-                    sub = pr_u * qtd
-                    total_proposta += sub
+            if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
+                st.session_state.carrinho.pop(i)
+                st.rerun()
 
-                    itens_final.append({
-                        "COD": dados_item['ID_COD'],
-                        "PRODUTO": dados_item['DESCRICAONF'],
-                        "MARCA": dados_item['LINHA'],
-                        "GRAMATURA": dados_item['GRAMAT'],
-                        "CX": cx_e,
-                        "QTDE": qtd,
-                        "VALOR": pr_u,
-                        "TOTAL": sub
-                    })
+    st.divider()
 
-                if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
-                    st.session_state.carrinho.pop(i)
-                    st.rerun()
-
-        st.divider()
-
+# O elif abaixo deve estar na mesma coluna do IF acima (margem esquerda)
+elif menu == "🚨 Inatividade":
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
@@ -273,6 +279,7 @@ if menu == "🛒 Pedidos":
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
