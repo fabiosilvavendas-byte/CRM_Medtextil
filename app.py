@@ -4,10 +4,34 @@ import os
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# 1. CONFIGURAÇÃO DA PÁGINA (INTACTA)
-st.set_page_config(page_title="CRM MedTextil - Pro", layout="wide", page_icon="🛡️")
+# 1. CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(
+    page_title="CRM MedTextil - Pro", 
+    layout="wide", 
+    page_icon="🛡️"
+)
 
-# 2. CARREGAMENTO DOS DADOS (CONSOLIDADO E INTACTO)
+# =================================================================
+# FUNÇÃO DE CALLBACK PARA O FILTRO MESTRE (SOLUÇÃO DEFINITIVA)
+# =================================================================
+def atualizar_item_carrinho(indice):
+    chave_sel = f"sel_{indice}"
+    if chave_sel in st.session_state:
+        escolha = st.session_state[chave_sel]
+        # Busca os dados no dataframe global que preparamos abaixo
+        dados = df_comb_global[df_comb_global['DISPLAY'] == escolha].iloc[0]
+        st.session_state.carrinho[indice].update({
+            "display": escolha,
+            "cod": dados['ID_COD'],
+            "desc": dados['DESCRICAONF'],
+            "peso": str(dados.get('GRAMAT', '')),
+            "cx": str(dados.get('CX_EMB', 1)),
+            "pr": float(dados['PRECO'])
+        })
+
+# ===============================
+# 2. CARREGAMENTO DOS DADOS (SISTEMA ROBUSTO)
+# ===============================
 @st.cache_data
 def carregar_dados():
     try:
@@ -34,122 +58,175 @@ def carregar_dados():
 
         produtos['ID_COD'] = produtos['ID_COD'].astype(str).str.replace('.0', '', regex=False).str.strip()
         precos['ID_COD'] = precos['ID_COD'].astype(str).str.replace('.0', '', regex=False).str.strip()
+        
+        Dashboard['RazaoSocial'] = Dashboard['RazaoSocial'].fillna("NÃO IDENTIFICADO").astype(str)
+        Dashboard['Vendedor'] = Dashboard['Vendedor'].fillna("SEM VENDEDOR").astype(str)
+        Dashboard['Estado'] = Dashboard['Estado'].fillna("S/I").astype(str)
         Dashboard['DataEmissao'] = pd.to_datetime(Dashboard['DataEmissao'], errors='coerce')
+        
         return Dashboard, produtos, precos, expansao
     except Exception as e:
-        st.error(f"Erro: {e}"); return None, None, None, None
+        st.error(f"Erro ao carregar arquivos: {e}")
+        return None, None, None, None
 
 Dashboard, produtos, precos, expansao = carregar_dados()
+vendas = Dashboard
+if "carrinho" not in st.session_state: st.session_state.carrinho = []
+if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = []
 
-# --- LÓGICA DO CARRINHO (ESTRUTURADA PARA O FILTRO MESTRE) ---
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = []
+# Preparação de dados para o Módulo de Pedidos (Global)
+cols_p = ['ID_COD', 'PRECO']
+if 'GRAMAT' in precos.columns: cols_p.append('GRAMAT')
+df_comb_global = produtos.merge(precos[cols_p], on='ID_COD', how='left').fillna({'PRECO':0, 'GRAMAT':''})
+df_comb_global['DISPLAY'] = df_comb_global['ID_COD'].astype(str) + " | " + df_comb_global['DESCRICAONF'].astype(str)
 
-def atualizar_item(index):
-    # Esta função garante que quando o código muda, o estado é salvo antes do rerun
-    novo_cod = st.session_state[f"sel_{index}"]
-    st.session_state.carrinho[index]['cod'] = novo_cod
-
-# 3. INTERFACE E NAVEGAÇÃO (CONSOLIDADA)
+# ===============================
+# 3. INTERFACE E NAVEGAÇÃO
+# ===============================
 st.sidebar.title("🛡️ MEDTEXTIL CRM")
 menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🛒 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if Dashboard is not None:
-    # MÓDULO 1: Dashboard (INTACTO)
+    # ---------------------------
+    # MÓDULO 1: Dashboard GERAL (MANTIDO)
+    # ---------------------------
     if menu == "📊 Dashboard":
         st.title("📊 Dashboard de Performance")
-        # [Seu código original de Dashboard aqui...]
-        st.info("Módulo consolidado e preservado.")
+        with st.sidebar:
+            st.subheader("Filtros")
+            anos = sorted(Dashboard['DataEmissao'].dt.year.dropna().unique().astype(int), reverse=True)
+            ano_sel = st.multiselect("Anos", anos, default=anos[:1])
+            vendedores = sorted([str(x) for x in Dashboard['Vendedor'].unique() if pd.notna(x)])
+            vend_sel = st.selectbox("Vendedor", ["Todos"] + vendedores)
+            estados = sorted([str(x) for x in Dashboard['Estado'].unique() if pd.notna(x)])
+            est_sel = st.multiselect("Estado", estados, default=estados)
+
+        df_f = Dashboard[(Dashboard['DataEmissao'].dt.year.isin(ano_sel)) & (Dashboard['Estado'].isin(est_sel))]
+        if vend_sel != "Todos": df_f = df_f[df_f['Vendedor'] == vend_sel]
+
+        c1, c2, c3 = st.columns(3)
+        fat_total = df_f['TotalProduto2'].sum()
+        ped_total = df_f['Numero_NF'].nunique()
+        c1.metric("Faturamento Total", f"R$ {fat_total:,.2f}")
+        c2.metric("Total de Pedidos", ped_total)
+        c3.metric("Ticket Médio", f"R$ {(fat_total/ped_total if ped_total > 0 else 0):,.2f}")
+
+        st.subheader("🏆 Ranking de Clientes")
+        rank = df_f.groupby('RazaoSocial').agg({'TotalProduto2': 'sum', 'Numero_NF': 'nunique'}).reset_index()
+        rank = rank.sort_values(by='TotalProduto2', ascending=False).head(10)
+        st.bar_chart(rank.set_index('RazaoSocial')['TotalProduto2'])
+        st.dataframe(rank, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 2: PEDIDOS (Sincronização por Callback)
+    # MÓDULO 2: PEDIDOS (COM TÉCNICA DE CALLBACK)
     # ---------------------------
     elif menu == "🛒 Pedidos":
-        st.title("🛒 Emissão de Proposta Comercial")
+        st.title("🛒 Pedidos")
+        opcoes = sorted(df_comb_global['DISPLAY'].unique())
 
         with st.container(border=True):
+            st.subheader("👤 Cliente")
             sel_cli = st.selectbox("Buscar Cliente", [""] + sorted(Dashboard['RazaoSocial'].unique()))
-            dados_c = {"n": "", "cnpj": "", "fone": "", "end": ""}
+            d_cli = {"n": "", "c": "", "f": "", "e": ""}
             if sel_cli:
                 inf = Dashboard[Dashboard['RazaoSocial'] == sel_cli].iloc[0]
-                dados_c = {"n": sel_cli, "cnpj": str(inf.get('CNPJ', '')), "fone": str(inf.get('Telefone', '')), "end": str(inf.get('Endereço', ''))}
-            
+                d_cli = {"n": sel_cli, "c": str(inf.get('CNPJ', '')), "f": str(inf.get('Telefone', '')), "e": str(inf.get('Endereço', ''))}
             c1, c2 = st.columns(2)
-            cli_nome = c1.text_input("Cliente", value=dados_c['n'])
-            cli_cnpj = c2.text_input("CNPJ", value=dados_c['cnpj'])
-            cli_fone = c1.text_input("Fone", value=dados_c['fone'])
-            cli_end = c2.text_input("Endereço", value=dados_c['end'])
+            cli_n = c1.text_input("Razão Social", value=d_cli['n'])
+            cli_c = c2.text_input("CNPJ", value=d_cli['c'])
 
-        df_base = produtos.merge(precos[['ID_COD', 'PRECO', 'GRAMAT']], on='ID_COD', how='left').fillna(0)
-        lista_codigos = sorted(df_base['ID_COD'].unique())
-
-        if st.button("➕ Adicionar Produto"):
-            st.session_state.carrinho.append({"cod": lista_codigos[0], "qtd": 1})
+        if st.button("➕ Adicionar Item"):
+            prim = df_comb_global[df_comb_global['DISPLAY'] == opcoes[0]].iloc[0]
+            st.session_state.carrinho.append({
+                "display": opcoes[0], "cod": prim['ID_COD'], "desc": prim['DESCRICAONF'],
+                "peso": str(prim.get('GRAMAT', '')), "cx": "1", "pr": float(prim['PRECO']), "qtd": 1
+            })
             st.rerun()
 
-        total_proposta = 0.0
+        total_p = 0.0
         itens_pdf = []
 
         for i, item in enumerate(st.session_state.carrinho):
             with st.container(border=True):
-                col_cod, col_prod, col_peso, col_cx, col_pr, col_qtd, col_tot = st.columns([1.2, 2.5, 0.8, 1, 1.2, 0.8, 1.2])
+                c_sel, c_peso, c_cx, c_pr, c_qtd, c_sub = st.columns([2.5, 0.8, 0.8, 1, 0.8, 1])
                 
-                # O SEGREDO: on_change=atualizar_item
-                idx_atual = lista_codigos.index(item['cod'])
-                col_cod.selectbox("Cód.", lista_codigos, index=idx_atual, key=f"sel_{i}", on_change=atualizar_item, args=(i,))
-                
-                # Dados sincronizados com base no código salvo no estado
-                row = df_base[df_base['ID_COD'] == st.session_state.carrinho[i]['cod']].iloc[0]
-                
-                prod_txt = col_prod.text_input("Produto", value=row['DESCRICAONF'], key=f"p_{i}")
-                peso_txt = col_peso.text_input("Peso", value=str(row.get('GRAMAT', '')), key=f"w_{i}")
-                cx_txt = col_cx.text_input("Caixa", value=str(row.get('CX_EMB', 1)), key=f"x_{i}")
-                pr_val = col_pr.number_input("Valor", value=float(row['PRECO']), format="%.2f", key=f"v_{i}")
-                qtd_val = col_qtd.number_input("Qtd", min_value=1, value=item['qtd'], key=f"q_{i}")
-                st.session_state.carrinho[i]['qtd'] = qtd_val
+                # CALLBACK APLICADO AQUI
+                idx = opcoes.index(item['display']) if item['display'] in opcoes else 0
+                c_sel.selectbox(f"Produto {i+1}", opcoes, index=idx, key=f"sel_{i}", on_change=atualizar_item_carrinho, args=(i,))
 
-                sub = pr_val * qtd_val
-                total_proposta += sub
-                col_tot.write(f"R$ {sub:,.2f}")
+                v_peso = c_peso.text_input("Peso", value=item['peso'], key=f"w_{i}")
+                v_cx = c_cx.text_input("Cx", value=item['cx'], key=f"x_{i}")
+                v_pr = c_pr.number_input("Unit.", value=item['pr'], format="%.2f", key=f"p_{i}")
+                v_qtd = c_qtd.number_input("Qtd", min_value=1, value=item['qtd'], key=f"q_{i}")
                 
-                itens_pdf.append({"COD": st.session_state.carrinho[i]['cod'], "PROD": prod_txt, "PESO": peso_txt, "CX": cx_txt, "QTD": qtd_val, "VAL": pr_val, "TOT": sub})
+                st.session_state.carrinho[i].update({"peso": v_peso, "cx": v_cx, "pr": v_pr, "qtd": v_qtd})
+                sub = v_pr * v_qtd
+                total_p += sub
+                c_sub.metric("Subtotal", f"R$ {sub:,.2f}")
+                
+                itens_pdf.append({"COD": item['cod'], "PROD": item['desc'], "PESO": v_peso, "CX": v_cx, "QTD": v_qtd, "VAL": v_pr, "TOT": sub})
 
-                if st.button("🗑️", key=f"rem_{i}"):
+                if st.button(f"🗑️ Remover {i+1}", key=f"rem_{i}"):
                     st.session_state.carrinho.pop(i); st.rerun()
 
-        # HTML FIEL AO MODELO PDF ENVIADO
-        if total_proposta > 0:
-            html_fiel = f"""
-            <div style="font-family: Arial; padding: 20px; border: 1px solid #000; width: 750px; margin: auto;">
-                <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px;">
-                    <h2 style="margin:0; color: #d32f2f;">MEDTEXTIL</h2>
-                    <p style="margin:0; font-size: 11px;">ULTRA TEXTIL IND E COM DE PROD HOSP LTDA | 40.357.820/0001-50</p>
-                    <p style="margin:0; font-size: 10px;">RY DOIS, 355-GALPÃO 3 - Distrito Industrial - João Pessoa - PB</p>
-                </div>
-                <div style="margin-top: 15px; font-size: 11px;">
-                    <strong>Representante:</strong> Rosselic Marinho | <strong>CPF:</strong> 338.610.054-68<br>
-                    <strong>Cliente:</strong> {cli_nome} | <strong>CNPJ:</strong> {cli_cnpj}<br>
-                    <strong>Endereço:</strong> {cli_end}
-                </div>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 10px;">
-                    <tr style="background: #eee;">
-                        <th style="border: 1px solid #000;">COD</th><th style="border: 1px solid #000;">PRODUTO</th>
-                        <th style="border: 1px solid #000;">PESO</th><th style="border: 1px solid #000;">CX</th>
-                        <th style="border: 1px solid #000;">QTDE</th><th style="border: 1px solid #000;">VALOR</th>
-                        <th style="border: 1px solid #000;">TOTAL</th>
-                    </tr>
-                    {"".join([f"<tr><td style='border:1px solid #000; padding:3px;'>{it['COD']}</td><td style='border:1px solid #000;'>{it['PROD']}</td><td style='border:1px solid #000; text-align:center;'>{it['PESO']}</td><td style='border:1px solid #000; text-align:center;'>{it['CX']}</td><td style='border:1px solid #000; text-align:center;'>{it['QTD']}</td><td style='border:1px solid #000; text-align:right;'>{it['VAL']:.2f}</td><td style='border:1px solid #000; text-align:right;'>{it['TOT']:.2f}</td></tr>" for it in itens_pdf])}
-                </table>
-                <h3 style="text-align: right; margin-top: 10px;">TOTAL: R$ {total_proposta:,.2f}</h3>
-            </div>
-            """
-            if st.button("🖨️ Imprimir Proposta"):
-                components.html(f"{html_fiel}<script>window.print();</script>", height=800)
+        if total_p > 0:
+            st.divider()
+            if st.button("📄 Gerar Proposta Comercial"):
+                html = f"""<div style='font-family: Arial; padding: 20px; border: 1px solid #000; width: 750px; margin: auto;'>
+                <h2 style='color: red; text-align: center;'>MEDTEXTIL</h2>
+                <p><strong>Representante:</strong> Rosselic Marinho | <strong>Cliente:</strong> {cli_n}</p>
+                <table style='width: 100%; border-collapse: collapse; font-size: 11px;'>
+                <tr style='background: #eee;'><th>COD</th><th>PRODUTO</th><th>PESO</th><th>CX</th><th>QTDE</th><th>VALOR</th><th>TOTAL</th></tr>
+                {"".join([f"<tr><td style='border:1px solid #000;'>{it['COD']}</td><td style='border:1px solid #000;'>{it['PROD']}</td><td style='border:1px solid #000; text-align:center;'>{it['PESO']}</td><td style='border:1px solid #000; text-align:center;'>{it['CX']}</td><td style='border:1px solid #000; text-align:center;'>{it['QTD']}</td><td style='border:1px solid #000;'>R$ {it['VAL']:.2f}</td><td style='border:1px solid #000;'>R$ {it['TOT']:.2f}</td></tr>" for it in itens_pdf])}
+                </table><h3 style='text-align: right;'>TOTAL: R$ {total_p:,.2f}</h3></div>"""
+                components.html(f"{html}<script>window.print();</script>", height=600)
 
-    # MÓDULOS 3 E 4 (INTACTOS E CONSOLIDADOS)
+    # ---------------------------
+    # MÓDULO 3: INATIVIDADE (MANTIDO)
+    # ---------------------------
     elif menu == "🚨 Inatividade":
-        st.title("🚨 Controle de Inatividade")
-        # [Seu código original de Inatividade aqui...]
+        st.title("🚨 Inatividade")
+        with st.sidebar:
+            vendedores_inat = sorted([str(x) for x in vendas['Vendedor'].unique() if pd.notna(x)])
+            v_inat = st.multiselect("Vendedores", vendedores_inat, default=vendedores_inat)
+            d_limite = st.number_input("Dias Limite", min_value=1, value=60)
+        df_i = vendas[vendas['Vendedor'].isin(v_inat)].copy()
+        if not df_i.empty:
+            res = df_i.groupby(['RazaoSocial', 'Vendedor', 'Estado']).agg({'DataEmissao': 'max', 'TotalProduto2': 'sum'}).reset_index()
+            res['Dias_Inativo'] = (datetime.now() - res['DataEmissao']).dt.days
+            final = res[res['Dias_Inativo'] >= d_limite].sort_values('Dias_Inativo', ascending=False)
+            st.dataframe(final, use_container_width=True)
+
+    # ---------------------------
+    # MÓDULO 4: EXPANSÃO PR (MANTIDO)
+    # ---------------------------
     elif menu == "🚀 Expansão PR":
-        st.title("🚀 Expansão PR")
-        # [Seu código original de Expansão aqui...]
+        st.title("🚀 Plano de Expansão PR 2026")
+        if "df_leads_ativa" not in st.session_state:
+            if expansao and 'Gestão de Leads' in expansao:
+                st.session_state.df_leads_ativa = expansao['Gestão de Leads'].copy()
+            else:
+                st.session_state.df_leads_ativa = pd.DataFrame(columns=["Data de Entrada", "Empresa", "Cidade", "Segmento", "Contato", "Status do Lead", "Dor Principal"])
+
+        tab_view, tab_add, tab_edit = st.tabs(["📋 Visualizar Leads", "➕ Novo Lead", "📈 Atualizar Funil"])
+        with tab_view:
+            st.dataframe(st.session_state.df_leads_ativa, use_container_width=True, hide_index=True)
+            if not st.session_state.df_leads_ativa.empty:
+                csv = st.session_state.df_leads_ativa.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Baixar Leads", csv, "leads.csv", "text/csv")
+        with tab_add:
+            with st.form("novo_lead_form", clear_on_submit=True):
+                c1, c2 = st.columns(2)
+                emp_n = c1.text_input("Empresa"); cid_n = c2.text_input("Cidade")
+                seg_n = c1.selectbox("Segmento", ["Hospitalar", "Distribuidora", "Clínica", "Público"])
+                con_n = c2.text_input("Contato"); dor_n = st.text_area("Necessidade")
+                if st.form_submit_button("✅ Salvar Lead"):
+                    if emp_n:
+                        novo = {"Data de Entrada": datetime.now().strftime("%d/%m/%Y"), "Empresa": emp_n, "Cidade": cid_n, "Segmento": seg_n, "Contato": con_n, "Status do Lead": "Prospecção", "Dor Principal": dor_n}
+                        st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo])], ignore_index=True)
+                        st.rerun()
+        with tab_edit:
+            if not st.session_state.df_leads_ativa.empty:
+                emp_edit = st.selectbox("Selecionar Lead", st.session_state.df_leads_ativa['Empresa'].unique())
+                status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
+                if st.button("Atualizar Histórico"): st.toast(f"Status de {emp_edit} atualizado!", icon="🚀")
