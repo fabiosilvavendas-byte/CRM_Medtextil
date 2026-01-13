@@ -67,7 +67,7 @@ if "clientes_novos" not in st.session_state: st.session_state.clientes_novos = [
 # 3. INTERFACE E NAVEGAÇÃO
 # ===============================
 st.sidebar.title("🛡️ MEDTEXTIL CRM")
-menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🧾 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
+menu = st.sidebar.radio("Navegação", ["📊 Dashboard", "🛒 Pedidos", "🚨 Inatividade", "🚀 Expansão PR"])
 
 if Dashboard is not None:
     # ---------------------------
@@ -100,77 +100,79 @@ if Dashboard is not None:
         st.bar_chart(rank.set_index('RazaoSocial')['TotalProduto2'])
         st.dataframe(rank, use_container_width=True)
 
-  # ---------------------------
-# MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
-# ---------------------------
-if menu == "🛒 Pedidos":
-    df_comb = (
-        produtos
-        .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
-        .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
-    )
+    # ---------------------------
+    # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
+    # ---------------------------
+    elif menu == "🛒 Pedidos":
+        df_comb = (
+            produtos
+            .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
+            .merge(produtos[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left') # Ajustado para usar tabela correta
+        )
 
-    df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-    df_comb['LINHA'] = df_comb['LINHA'].fillna('')
-    df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
+        df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
+        df_comb['LINHA'] = df_comb['LINHA'].fillna('')
+        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')   
 
-    df_comb['DISPLAY'] = (
-        df_comb['ID_COD'].astype(str)
-        + " | "
-        + df_comb['DESCRICAONF'].astype(str)
-    )
+        df_comb['DISPLAY'] = (
+            df_comb['ID_COD'].astype(str)
+            + " | "
+            + df_comb['DESCRICAONF'].astype(str)
+        )
 
-    total_proposta = 0.0
-    itens_final = []
+        total_proposta = 0.0
+        itens_final = []
 
-    # Verificação de segurança para o carrinho
-    if 'carrinho' not in st.session_state:
-        st.session_state.carrinho = []
+        if 'carrinho' not in st.session_state:
+            st.session_state.carrinho = []
 
-    for i, item in enumerate(st.session_state.carrinho):
-        with st.container():
-            c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
+        if st.button("➕ Adicionar Novo Item"):
+            st.session_state.carrinho.append({"id": len(st.session_state.carrinho)})
+            st.rerun()
 
-            escolha = c_busca.selectbox(
-                f"Item {i+1}",
-                options=sorted(df_comb['DISPLAY'].unique()),
-                key=f"sel_{i}"
-            )
+        for i, item in enumerate(st.session_state.carrinho):
+            with st.container():
+                c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
 
-            if escolha:
-                dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
-
-                st.caption(
-                    f"**Marca:** {dados_item['LINHA']} | "
-                    f"**Gramatura:** {dados_item['GRAMAT']}"
+                escolha = c_busca.selectbox(
+                    f"Item {i+1}",
+                    options=sorted(df_comb['DISPLAY'].unique()),
+                    key=f"sel_{i}"
                 )
 
-                cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
-                pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
-                qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
+                if escolha:
+                    dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
 
-                sub = pr_u * qtd
-                total_proposta += sub
+                    st.caption(
+                        f"**Marca:** {dados_item['LINHA']} | "
+                        f"**Gramatura:** {dados_item['GRAMAT']}"
+                    )
 
-                itens_final.append({
-                    "COD": dados_item['ID_COD'],
-                    "PRODUTO": dados_item['DESCRICAONF'],
-                    "MARCA": dados_item['LINHA'],
-                    "GRAMATURA": dados_item['GRAMAT'],
-                    "CX": cx_e,
-                    "QTDE": qtd,
-                    "VALOR": pr_u,
-                    "TOTAL": sub
-                })
+                    cx_e = c_cx.text_input("Cx", value=str(dados_item.get('CX_EMB', '')), key=f"x_{i}")
+                    pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
+                    qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
 
-            if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
-                st.session_state.carrinho.pop(i)
-                st.rerun()
+                    sub = pr_u * qtd
+                    total_proposta += sub
 
-    st.divider()
+                    itens_final.append({
+                        "COD": dados_item['ID_COD'],
+                        "PRODUTO": dados_item['DESCRICAONF'],
+                        "MARCA": dados_item['LINHA'],
+                        "GRAMATURA": dados_item['GRAMAT'],
+                        "CX": cx_e,
+                        "QTDE": qtd,
+                        "VALOR": pr_u,
+                        "TOTAL": sub
+                    })
 
-# O elif abaixo deve estar na mesma coluna do IF acima (margem esquerda)
-elif menu == "🚨 Inatividade":
+                if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
+                    st.session_state.carrinho.pop(i)
+                    st.rerun()
+
+        st.divider()
+        st.subheader(f"Total da Proposta: R$ {total_proposta:,.2f}")
+
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
@@ -205,29 +207,23 @@ elif menu == "🚨 Inatividade":
             st.dataframe(final, use_container_width=True)
 
     # ---------------------------
-    # MÓDULO 4: NOVO - EXPANSÃO PR (BASEADO NO RELATÓRIO)
-    # ---------------------------
-    # ---------------------------
-    # MÓDULO 4: EXPANSÃO PR (INTERATIVO - COM PREENCHIMENTO)
+    # MÓDULO 4: EXPANSÃO PR (INTERATIVO)
     # ---------------------------
     elif menu == "🚀 Expansão PR":
         st.title("🚀 Plano de Expansão PR 2026")
         
-        # Inicializa a base de leads no estado da sessão se ainda não existir
         if "df_leads_ativa" not in st.session_state:
             if expansao and 'Gestão de Leads' in expansao:
                 st.session_state.df_leads_ativa = expansao['Gestão de Leads'].copy()
             else:
                 st.session_state.df_leads_ativa = pd.DataFrame(columns=["Data de Entrada", "Empresa", "Cidade", "Segmento", "Contato", "Status do Lead", "Dor Principal"])
 
-        # Abas para organizar o trabalho no iPhone
         tab_view, tab_add, tab_edit = st.tabs(["📋 Visualizar Leads", "➕ Novo Lead", "📈 Atualizar Funil"])
 
         with tab_view:
             st.subheader("Base de Leads Atual")
             st.dataframe(st.session_state.df_leads_ativa, use_container_width=True, hide_index=True)
             
-            # Botão para baixar o que foi preenchido (como CSV) para você não perder o trabalho
             if not st.session_state.df_leads_ativa.empty:
                 csv = st.session_state.df_leads_ativa.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("📥 Baixar Leads Atualizados", csv, "leads_expansao_atualizado.csv", "text/csv")
@@ -255,7 +251,6 @@ elif menu == "🚨 Inatividade":
                             "Status do Lead": "Prospecção",
                             "Dor Principal": dor_n
                         }
-                        # Adiciona ao DataFrame em memória
                         st.session_state.df_leads_ativa = pd.concat([st.session_state.df_leads_ativa, pd.DataFrame([novo_registro])], ignore_index=True)
                         st.success(f"Lead {empresa_n} adicionado com sucesso!")
                         st.rerun()
@@ -265,11 +260,9 @@ elif menu == "🚨 Inatividade":
         with tab_edit:
             st.subheader("Gestão de Funil e KPIs")
             if not st.session_state.df_leads_ativa.empty:
-                # Mini Dashboard com os dados que você acabou de preencher
                 c1, c2 = st.columns(2)
                 c1.metric("Total de Leads", len(st.session_state.df_leads_ativa))
                 
-                # Interface simples de atualização
                 st.divider()
                 empresa_edit = st.selectbox("Selecionar Lead para Follow-up", st.session_state.df_leads_ativa['Empresa'].unique())
                 status_edit = st.select_slider("Alterar Status", options=["Prospecção", "Qualificação", "Proposta", "Negociação", "Fechamento"])
@@ -279,6 +272,7 @@ elif menu == "🚨 Inatividade":
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
