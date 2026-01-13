@@ -103,102 +103,100 @@ if Dashboard is not None:
     # ---------------------------
     # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
     # ---------------------------
-    df_comb = (
-    produtos
-    .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
-    .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
-)
-
-df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
-df_comb['LINHA'] = df_comb['LINHA'].fillna('')
-df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')
-
-# Exibição com código + descrição (permite busca pelo ID_COD)
-df_comb['DISPLAY'] = (
-    df_comb['ID_COD'].astype(str)
-    + " | "
-    + df_comb['DESCRICAONF'].astype(str)
-)
-
-total_proposta = 0.0
-itens_final = []
-
-for i, item in enumerate(st.session_state.carrinho):
-    with st.container():
-        c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
-
-        escolha = c_busca.selectbox(
-            f"Item {i+1}",
-            options=sorted(df_comb['DISPLAY'].unique()),
-            key=f"sel_{i}"
+    if menu == "🛒 Pedidos":  # Verifique se o seu IF inicial é este
+        df_comb = (
+            produtos
+            .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
+            .merge(tabelas_ne[['ID_COD', 'LINHA', 'GRAMAT']], on='ID_COD', how='left')
         )
 
-        if escolha:
-            dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
+        df_comb['PRECO'] = df_comb['PRECO'].fillna(0.0)
+        df_comb['LINHA'] = df_comb['LINHA'].fillna('')
+        df_comb['GRAMAT'] = df_comb['GRAMAT'].fillna('')
 
-            # Exibição informativa (marca e gramatura)
-            st.caption(
-                f"**Marca:** {dados_item['LINHA']} | "
-                f"**Gramatura:** {dados_item['GRAMAT']}"
-            )
+        df_comb['DISPLAY'] = (
+            df_comb['ID_COD'].astype(str)
+            + " | "
+            + df_comb['DESCRICAONF'].astype(str)
+        )
 
-            cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
-            pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
-            qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
+        total_proposta = 0.0
+        itens_final = []
 
-            sub = pr_u * qtd
-            total_proposta += sub
+        for i, item in enumerate(st.session_state.carrinho):
+            with st.container():
+                c_busca, c_cx, c_pr, c_qtd = st.columns([4, 1, 1, 1])
 
-            itens_final.append({
-                "COD": dados_item['ID_COD'],
-                "PRODUTO": dados_item['DESCRICAONF'],
-                "MARCA": dados_item['LINHA'],
-                "GRAMATURA": dados_item['GRAMAT'],
-                "CX": cx_e,
-                "QTDE": qtd,
-                "VALOR": pr_u,
-                "TOTAL": sub
-            })
+                escolha = c_busca.selectbox(
+                    f"Item {i+1}",
+                    options=sorted(df_comb['DISPLAY'].unique()),
+                    key=f"sel_{i}"
+                )
 
-        if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
-            st.session_state.carrinho.pop(i)
-            st.rerun()
+                if escolha:
+                    dados_item = df_comb[df_comb['DISPLAY'] == escolha].iloc[0]
 
-    st.divider()
+                    st.caption(
+                        f"**Marca:** {dados_item['LINHA']} | "
+                        f"**Gramatura:** {dados_item['GRAMAT']}"
+                    )
+
+                    cx_e = c_cx.text_input("Cx", value=dados_item['CX_EMB'], key=f"x_{i}")
+                    pr_u = c_pr.number_input("Unit.", value=float(dados_item['PRECO']), key=f"p_{i}")
+                    qtd = c_qtd.number_input("Qtd", min_value=1, value=1, key=f"q_{i}")
+
+                    sub = pr_u * qtd
+                    total_proposta += sub
+
+                    itens_final.append({
+                        "COD": dados_item['ID_COD'],
+                        "PRODUTO": dados_item['DESCRICAONF'],
+                        "MARCA": dados_item['LINHA'],
+                        "GRAMATURA": dados_item['GRAMAT'],
+                        "CX": cx_e,
+                        "QTDE": qtd,
+                        "VALOR": pr_u,
+                        "TOTAL": sub
+                    })
+
+                if st.button(f"🗑️ Remover {i+1}", key=f"btn_rem_{i}"):
+                    st.session_state.carrinho.pop(i)
+                    st.rerun()
+
+        st.divider()
 
     # ---------------------------
     # MÓDULO 3: INATIVIDADE
     # ---------------------------
     elif menu == "🚨 Inatividade":
-    st.title("🚨 Inatividade")
-    with st.sidebar:
-        vendedores_inat = sorted(
-            [str(x) for x in vendas['Vendedor'].unique() if pd.notna(x)]
-        )
-        v_inat = st.multiselect(
-            "Vendedores", vendedores_inat, default=vendedores_inat
-        )
-        d_limite = st.number_input(
-            "Dias Limite", min_value=1, value=60
-        )
+        st.title("🚨 Inatividade")
+        with st.sidebar:
+            vendedores_inat = sorted(
+                [str(x) for x in vendas['Vendedor'].unique() if pd.notna(x)]
+            )
+            v_inat = st.multiselect(
+                "Vendedores", vendedores_inat, default=vendedores_inat
+            )
+            d_limite = st.number_input(
+                "Dias Limite", min_value=1, value=60
+            )
 
-    df_i = vendas[vendas['Vendedor'].isin(v_inat)].copy()
-    if not df_i.empty:
-        res = (
-            df_i
-            .groupby(['RazaoSocial', 'Vendedor', 'Estado'])
-            .agg({'DataEmissao': 'max', 'TotalProduto2': 'sum'})
-            .reset_index()
-        )
-        res['Dias_Inativo'] = (
-            datetime.now() - res['DataEmissao']
-        ).dt.days
-        final = res[
-            res['Dias_Inativo'] >= d_limite
-        ].sort_values('Dias_Inativo', ascending=False)
+        df_i = vendas[vendas['Vendedor'].isin(v_inat)].copy()
+        if not df_i.empty:
+            res = (
+                df_i
+                .groupby(['RazaoSocial', 'Vendedor', 'Estado'])
+                .agg({'DataEmissao': 'max', 'TotalProduto2': 'sum'})
+                .reset_index()
+            )
+            res['Dias_Inativo'] = (
+                datetime.now() - res['DataEmissao']
+            ).dt.days
+            final = res[
+                res['Dias_Inativo'] >= d_limite
+            ].sort_values('Dias_Inativo', ascending=False)
 
-        st.dataframe(final, use_container_width=True)
-
+            st.dataframe(final, use_container_width=True)
 
     # ---------------------------
     # MÓDULO 4: NOVO - EXPANSÃO PR (BASEADO NO RELATÓRIO)
