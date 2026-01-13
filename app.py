@@ -103,7 +103,7 @@ if Dashboard is not None:
     # ---------------------------
     # MÓDULO 2: PEDIDOS (SISTEMA INTEGRAL)
     # ---------------------------
-if menu == "🛒 Pedidos":  # Verifique se o seu IF inicial é este
+    if menu == "🛒 Pedidos":  # Verifique se o seu IF inicial é este
     df_comb = (
         produtos
             .merge(precos[['ID_COD', 'PRECO']], on='ID_COD', how='left')
@@ -273,6 +273,7 @@ if menu == "🛒 Pedidos":  # Verifique se o seu IF inicial é este
                     st.toast(f"Status de {empresa_edit} atualizado!", icon="🚀")
             else:
                 st.info("Cadastre leads na aba ao lado para gerenciar o funil.")
+
 
 
 
