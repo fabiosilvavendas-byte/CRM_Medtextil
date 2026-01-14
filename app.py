@@ -194,7 +194,18 @@ with col2:
     data_fim = st.date_input("Data Fim", data_max)
 
 # Filtro de Vendedor
-vendedores = ['Todos'] + sorted(vendas_completas['Vendedor'].unique().tolist())
+vendedores = (
+    ['Todos'] +
+    sorted(
+        vendas_completas['Vendedor']
+        .dropna()              # remove NaN
+        .astype(str)           # garante texto
+        .str.strip()           # remove espaços
+        .unique()
+        .tolist()
+    )
+)
+
 vendedor_selecionado = st.sidebar.selectbox("Vendedor", vendedores)
 
 # Aplicar filtros
@@ -455,5 +466,6 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
 
