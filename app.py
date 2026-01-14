@@ -436,8 +436,8 @@ const GestaoComercial = () => {
             <div className="bg-blue-50 border-l-4 border-blue-500 p-4">
               <h4 className="font-bold mb-2">Regras de Comissão:</h4>
               <ul className="space-y-1 text-sm">
-                <li>• <strong>3%</strong>: Quando Preço de Venda = Preço de Tabela</li>
-                <li>• <strong>4%</strong>: Quando Preço de Venda ≥ (Preço de Tabela + 6%)</li>
+                <li><strong>3%</strong>: Quando Preço de Venda = Preço de Tabela</li>
+                <li><strong>4%</strong>: Quando Preço de Venda ≥ (Preço de Tabela + 6%)</li>
               </ul>
             </div>
           </div>
@@ -540,3 +540,4 @@ const GestaoComercial = () => {
 };
 
 export default GestaoComercial;
+
