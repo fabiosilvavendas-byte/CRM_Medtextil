@@ -294,9 +294,9 @@ if modulo == "📊 Relatório BI":
     st.markdown("---")
     
     # Churn - Clientes sem compras há mais de 60 dias
-    st.subheader("⚠️ Clientes sem Compras (últimos 365 dias)")
+    st.subheader("⚠️ Clientes sem Compras (últimos 60 dias)")
     
-    clientes_recentes_set = set(df_filtrado[df_filtrado['DataEmissao'] >= data_365_dias]['CPF_CNPJ'].unique())
+    clientes_recentes_set = set(df_filtrado[df_filtrado['DataEmissao'] >= data_60_dias]['CPF_CNPJ'].unique())
     todos_clientes_set = set(vendas_completas['CPF_CNPJ'].unique())
     clientes_churn = todos_clientes_set - clientes_recentes_set
     
@@ -466,6 +466,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
 
 
