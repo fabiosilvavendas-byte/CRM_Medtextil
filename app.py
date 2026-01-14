@@ -69,7 +69,7 @@ arquivos_necessarios = {
     'vendas': 'CONSULTA_VENDEDORES.xlsx',
     'produtos': 'Produtos_Agrupados_Completos_conciliados.xlsx',
     'precos': 'TABELAS_NE.xlsx',
-    'inadimplencia': 'XLS_Grid_LANCAMENTO A RECEBER.xls'
+    'inadimplencia': 'XLS_Grid_LANCAMENTO A RECEBER.xlsxx'
 }
 
 # Verificar quais arquivos estão faltando
@@ -466,6 +466,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
 
 
