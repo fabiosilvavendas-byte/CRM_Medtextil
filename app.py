@@ -446,7 +446,7 @@ elif modulo == "💰 Inadimplência":
     st.markdown("---")
     
     # Tabela de inadimplência
-    df_display = df_inad[['No Doc', 'Razão Social', 'Funcionário', 'Dt.Vencimento', 'Vr.Líquido', 'Status']].copy()
+    df_display = df_inad[['N_Doc', 'Razão Social', 'Funcionário', 'Dt.Vencimento', 'Vr.Líquido', 'Status']].copy()
     df_display['Dt.Vencimento'] = df_display['Dt.Vencimento'].dt.strftime('%d/%m/%Y')
     df_display['Vr.Líquido'] = df_display['Vr.Líquido'].apply(lambda x: f"R$ {x:,.2f}")
     
@@ -466,6 +466,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
 
 
