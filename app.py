@@ -27,9 +27,25 @@ def carregar_dados_do_arquivo(arquivo_vendas, arquivo_produtos, arquivo_precos, 
         # 2. Produtos
         produtos = pd.read_excel(arquivo_produtos)
         
-        if 'ID_COD' not in produtos.columns:
-            st.error("❌ Coluna 'ID_COD' não encontrada em produtos")
-            return None, None, None, None
+        produtos = pd.read_excel(arquivo_produtos)
+
+# 🔧 LIMPEZA FORÇADA DOS NOMES DAS COLUNAS
+produtos.columns = (
+    produtos.columns
+    .astype(str)
+    .str.replace('\ufeff', '', regex=True)  # remove BOM
+    .str.replace('\xa0', '', regex=True)    # remove espaço não quebrável
+    .str.strip()                            # remove espaços invisíveis
+)
+
+# 🔍 DEBUG VISUAL (mostra exatamente o nome real)
+st.sidebar.write("📦 Colunas Produtos:", [repr(c) for c in produtos.columns])
+
+# 🔒 VALIDAÇÃO
+if 'ID_COD' not in produtos.columns:
+    st.error("❌ Coluna 'ID_COD' não encontrada mesmo após limpeza")
+    return None, None, None, None
+
         
         # 3. Tabela de Preços
         tabela_preco = pd.read_excel(arquivo_precos)
@@ -437,3 +453,4 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
