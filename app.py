@@ -167,11 +167,11 @@ def conciliar_dados(vendas, produtos, tabela_preco):
         if pd.isna(row['PrecoTabela']) or row['PrecoTabela'] == 0:
             return 0
         if row['PrecoUnit'] == row['PrecoTabela']:
-            return row['TotalLiquidoNF'] * 0.03
+            return row['TotalProduto2'] * 0.03
         elif row['PrecoUnit'] >= (row['PrecoTabela'] * 1.06):
-            return row['TotalLiquidoNF'] * 0.04
+            return row['TotalProduto2'] * 0.04
         else:
-            return row['TotalLiquidoNF'] * 0.03
+            return row['TotalProduto2'] * 0.03
     
     vendas_completas['Comissao'] = vendas_completas.apply(calcular_comissao, axis=1)
     
@@ -232,9 +232,9 @@ if modulo == "📊 Relatório BI":
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
     
-    total_faturamento = df_filtrado['TotalLiquidoNF'].sum()
+    total_faturamento = df_filtrado['TotalProduto2'].sum()
     total_clientes = df_filtrado['CPF_CNPJ'].nunique()
-    ticket_medio = df_filtrado['TotalLiquidoNF'].mean()
+    ticket_medio = df_filtrado['TotalProduto2'].mean()
     
     # Positivação de Carteira
     hoje = datetime.now()
@@ -255,15 +255,15 @@ if modulo == "📊 Relatório BI":
     
     with col1:
         st.subheader("📈 Evolução Mensal de Faturamento")
-        df_mensal = df_filtrado.groupby(df_filtrado['DataEmissao'].dt.to_period('M'))['TotalLiquidoNF'].sum().reset_index()
+        df_mensal = df_filtrado.groupby(df_filtrado['DataEmissao'].dt.to_period('M'))['TotalProduto2'].sum().reset_index()
         df_mensal['DataEmissao'] = df_mensal['DataEmissao'].astype(str)
-        fig = px.line(df_mensal, x='DataEmissao', y='TotalLiquidoNF', 
-                      labels={'TotalLiquidoNF': 'Faturamento', 'DataEmissao': 'Mês'})
+        fig = px.line(df_mensal, x='DataEmissao', y='TotalProduto2', 
+                      labels={'TotalProduto2': 'Faturamento', 'DataEmissao': 'Mês'})
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         st.subheader("🏆 Top 10 Clientes")
-        top_clientes = df_filtrado.groupby('RazaoSocial')['TotalLiquidoNF'].sum().sort_values(ascending=False).head(10)
+        top_clientes = df_filtrado.groupby('RazaoSocial')['TotalProduto2'].sum().sort_values(ascending=False).head(10)
         fig = px.bar(top_clientes, orientation='h', 
                      labels={'value': 'Faturamento', 'RazaoSocial': 'Cliente'})
         st.plotly_chart(fig, use_container_width=True)
@@ -276,9 +276,9 @@ if modulo == "📊 Relatório BI":
     with col1:
         st.subheader("🎖️ Ranking de Vendedores")
         ranking_vendedores = df_filtrado.groupby('Vendedor').agg({
-            'TotalLiquidoNF': 'sum',
+            'TotalProduto2': 'sum',
             'Comissao': 'sum'
-        }).sort_values('TotalLiquidoNF', ascending=False).reset_index()
+        }).sort_values('TotalProduto2', ascending=False).reset_index()
         ranking_vendedores.columns = ['Vendedor', 'Faturamento', 'Comissão']
         ranking_vendedores['Faturamento'] = ranking_vendedores['Faturamento'].apply(lambda x: f"R$ {x:,.2f}")
         ranking_vendedores['Comissão'] = ranking_vendedores['Comissão'].apply(lambda x: f"R$ {x:,.2f}")
@@ -315,7 +315,7 @@ if modulo == "📊 Relatório BI":
         cliente_hist = st.selectbox("Selecione o Cliente", df_filtrado['RazaoSocial'].unique())
         df_cliente = df_filtrado[df_filtrado['RazaoSocial'] == cliente_hist][
             ['DataEmissao', 'CodigoProduto', 'Descrição', 'Gramatura', 'Quantidade', 
-             'PrecoUnit', 'TotalLiquidoNF', 'CondPagamento']
+             'PrecoUnit', 'TotalProduto2', 'CondPagamento']
         ].sort_values('DataEmissao', ascending=False)
         st.dataframe(df_cliente, use_container_width=True, hide_index=True)
     
@@ -323,7 +323,7 @@ if modulo == "📊 Relatório BI":
         produto_hist = st.selectbox("Selecione o Produto", df_filtrado['CodigoProduto'].unique())
         df_produto = df_filtrado[df_filtrado['CodigoProduto'] == produto_hist][
             ['DataEmissao', 'RazaoSocial', 'Vendedor', 'Quantidade', 
-             'PrecoUnit', 'PrecoTabela', 'TotalLiquidoNF', 'CondPagamento']
+             'PrecoUnit', 'PrecoTabela', 'TotalProduto2', 'CondPagamento']
         ].sort_values('DataEmissao', ascending=False)
         st.dataframe(df_produto, use_container_width=True, hide_index=True)
 
@@ -466,6 +466,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
 
 
