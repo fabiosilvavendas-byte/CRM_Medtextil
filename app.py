@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
+import os
 
 # Configuração da página
 st.set_page_config(page_title="Gestão Comercial", layout="wide", page_icon="📊")
@@ -16,9 +17,32 @@ def carregar_dados():
         # Mensagens de debug
         st.sidebar.info("Carregando dados...")
         
+        # Verificar diretório atual
+        diretorio_atual = os.getcwd()
+        st.sidebar.text(f"📁 Diretório: {diretorio_atual}")
+        
+        # Listar arquivos disponíveis
+        arquivos_disponiveis = os.listdir(diretorio_atual)
+        st.sidebar.text(f"📂 Arquivos encontrados: {len(arquivos_disponiveis)}")
+        
         # 1. Vendas
         st.sidebar.text("📄 Carregando vendas...")
-        vendas = pd.read_excel('CONSULTA_VENDEDORES.xlsx')
+        arquivo_vendas = 'CONSULTA_VENDEDORES.xlsx'
+        
+        if not os.path.exists(arquivo_vendas):
+            st.error(f"❌ Arquivo não encontrado: {arquivo_vendas}")
+            st.warning("📁 Arquivos disponíveis no diretório:")
+            st.write(arquivos_disponiveis)
+            st.info("💡 **Solução:** Faça upload do arquivo usando o widget abaixo:")
+            
+            uploaded_vendas = st.file_uploader("📤 Upload: CONSULTA_VENDEDORES.xlsx", type=['xlsx'])
+            if uploaded_vendas is not None:
+                vendas = pd.read_excel(uploaded_vendas)
+            else:
+                return None, None, None, None
+        else:
+            vendas = pd.read_excel(arquivo_vendas)
+        
         st.sidebar.success(f"✅ Vendas: {len(vendas)} registros")
         
         # Verificar e converter data
@@ -31,7 +55,18 @@ def carregar_dados():
         
         # 2. Produtos
         st.sidebar.text("📦 Carregando produtos...")
-        produtos = pd.read_excel('Produtos_Agrupados_Completos_conciliados.xlsx')
+        arquivo_produtos = 'Produtos_Agrupados_Completos_conciliados.xlsx'
+        
+        if not os.path.exists(arquivo_produtos):
+            st.error(f"❌ Arquivo não encontrado: {arquivo_produtos}")
+            uploaded_produtos = st.file_uploader("📤 Upload: Produtos_Agrupados_Completos_conciliados.xlsx", type=['xlsx'])
+            if uploaded_produtos is not None:
+                produtos = pd.read_excel(uploaded_produtos)
+            else:
+                return None, None, None, None
+        else:
+            produtos = pd.read_excel(arquivo_produtos)
+        
         st.sidebar.success(f"✅ Produtos: {len(produtos)} registros")
         
         # Verificar coluna ID_COD
@@ -42,12 +77,34 @@ def carregar_dados():
         
         # 3. Tabela de Preços
         st.sidebar.text("💰 Carregando tabela de preços...")
-        tabela_preco = pd.read_excel('TABELAS_NE.xlsx')
+        arquivo_precos = 'TABELAS_NE.xlsx'
+        
+        if not os.path.exists(arquivo_precos):
+            st.error(f"❌ Arquivo não encontrado: {arquivo_precos}")
+            uploaded_precos = st.file_uploader("📤 Upload: TABELAS_NE.xlsx", type=['xlsx'])
+            if uploaded_precos is not None:
+                tabela_preco = pd.read_excel(uploaded_precos)
+            else:
+                return None, None, None, None
+        else:
+            tabela_preco = pd.read_excel(arquivo_precos)
+        
         st.sidebar.success(f"✅ Preços: {len(tabela_preco)} registros")
         
         # 4. Inadimplência
         st.sidebar.text("📋 Carregando inadimplência...")
-        inadimplencia = pd.read_excel('XLS_Grid_LANCAMENTO A RECEBER.xls')
+        arquivo_inadimplencia = 'XLS_Grid_LANCAMENTO A RECEBER.xls'
+        
+        if not os.path.exists(arquivo_inadimplencia):
+            st.error(f"❌ Arquivo não encontrado: {arquivo_inadimplencia}")
+            uploaded_inadimplencia = st.file_uploader("📤 Upload: XLS_Grid_LANCAMENTO A RECEBER.xls", type=['xls', 'xlsx'])
+            if uploaded_inadimplencia is not None:
+                inadimplencia = pd.read_excel(uploaded_inadimplencia)
+            else:
+                return None, None, None, None
+        else:
+            inadimplencia = pd.read_excel(arquivo_inadimplencia)
+        
         st.sidebar.success(f"✅ Inadimplência: {len(inadimplencia)} registros")
         
         if 'Dt.Vencimento' in inadimplencia.columns:
@@ -59,7 +116,12 @@ def carregar_dados():
         
     except FileNotFoundError as e:
         st.error(f"❌ Arquivo não encontrado: {str(e)}")
-        st.info("📁 Certifique-se de que os arquivos estão na raiz do repositório GitHub")
+        st.info("📁 **Possíveis soluções:**")
+        st.markdown("""
+        1. Certifique-se de que os arquivos estão na mesma pasta do script
+        2. Verifique se os nomes dos arquivos estão corretos
+        3. Use o upload manual acima para carregar os arquivos
+        """)
         return None, None, None, None
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {str(e)}")
@@ -269,8 +331,8 @@ elif modulo == "📦 Pedidos e Comissões":
     
     # Filtrar produtos
     if busca:
-        mask_busca = (produtos['ID_COD'].str.contains(busca, case=False, na=False)) | \
-                     (produtos['Descrição'].str.contains(busca, case=False, na=False))
+        mask_busca = (produtos['ID_COD'].astype(str).str.contains(busca, case=False, na=False)) | \
+                     (produtos['Descrição'].astype(str).str.contains(busca, case=False, na=False))
         produtos_filtrados = produtos[mask_busca]
     else:
         produtos_filtrados = produtos
@@ -303,7 +365,8 @@ elif modulo == "📦 Pedidos e Comissões":
     
     with col1:
         produto_sim = st.selectbox("Produto", produtos['ID_COD'].unique())
-        preco_tab = tabela_preco[tabela_preco['ID_COD'] == produto_sim]['PRECO'].values[0] if len(tabela_preco[tabela_preco['ID_COD'] == produto_sim]) > 0 else 0
+        preco_tab_df = tabela_preco[tabela_preco['ID_COD'] == produto_sim]['PRECO']
+        preco_tab = preco_tab_df.values[0] if len(preco_tab_df) > 0 else 0
         st.write(f"**Preço Tabela:** R$ {preco_tab:.2f}")
     
     with col2:
