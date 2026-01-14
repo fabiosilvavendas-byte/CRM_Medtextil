@@ -9,126 +9,110 @@ import os
 # Configuração da página
 st.set_page_config(page_title="Gestão Comercial", layout="wide", page_icon="📊")
 
-# Função para carregar dados
+# Função para carregar dados (SEM widgets dentro)
 @st.cache_data
-def carregar_dados():
-    """Carrega todas as planilhas necessárias"""
+def carregar_dados_do_arquivo(arquivo_vendas, arquivo_produtos, arquivo_precos, arquivo_inadimplencia):
+    """Carrega todas as planilhas a partir dos arquivos fornecidos"""
     try:
-        # Mensagens de debug
-        st.sidebar.info("Carregando dados...")
-        
-        # Verificar diretório atual
-        diretorio_atual = os.getcwd()
-        st.sidebar.text(f"📁 Diretório: {diretorio_atual}")
-        
-        # Listar arquivos disponíveis
-        arquivos_disponiveis = os.listdir(diretorio_atual)
-        st.sidebar.text(f"📂 Arquivos encontrados: {len(arquivos_disponiveis)}")
-        
         # 1. Vendas
-        st.sidebar.text("📄 Carregando vendas...")
-        arquivo_vendas = 'CONSULTA_VENDEDORES.xlsx'
-        
-        if not os.path.exists(arquivo_vendas):
-            st.error(f"❌ Arquivo não encontrado: {arquivo_vendas}")
-            st.warning("📁 Arquivos disponíveis no diretório:")
-            st.write(arquivos_disponiveis)
-            st.info("💡 **Solução:** Faça upload do arquivo usando o widget abaixo:")
-            
-            uploaded_vendas = st.file_uploader("📤 Upload: CONSULTA_VENDEDORES.xlsx", type=['xlsx'])
-            if uploaded_vendas is not None:
-                vendas = pd.read_excel(uploaded_vendas)
-            else:
-                return None, None, None, None
-        else:
-            vendas = pd.read_excel(arquivo_vendas)
-        
-        st.sidebar.success(f"✅ Vendas: {len(vendas)} registros")
+        vendas = pd.read_excel(arquivo_vendas)
         
         # Verificar e converter data
-        if 'DataEmissao' in vendas.columns:
-            vendas['DataEmissao'] = pd.to_datetime(vendas['DataEmissao'], errors='coerce')
-        else:
-            st.error("❌ Coluna 'DataEmissao' não encontrada em CONSULTA_VENDEDORES.xlsx")
-            st.write("Colunas disponíveis:", vendas.columns.tolist())
+        if 'DataEmissao' not in vendas.columns:
+            st.error("❌ Coluna 'DataEmissao' não encontrada em vendas")
             return None, None, None, None
         
+        vendas['DataEmissao'] = pd.to_datetime(vendas['DataEmissao'], errors='coerce')
+        
         # 2. Produtos
-        st.sidebar.text("📦 Carregando produtos...")
-        arquivo_produtos = 'Produtos_Agrupados_Completos_conciliados.xlsx'
+        produtos = pd.read_excel(arquivo_produtos)
         
-        if not os.path.exists(arquivo_produtos):
-            st.error(f"❌ Arquivo não encontrado: {arquivo_produtos}")
-            uploaded_produtos = st.file_uploader("📤 Upload: Produtos_Agrupados_Completos_conciliados.xlsx", type=['xlsx'])
-            if uploaded_produtos is not None:
-                produtos = pd.read_excel(uploaded_produtos)
-            else:
-                return None, None, None, None
-        else:
-            produtos = pd.read_excel(arquivo_produtos)
-        
-        st.sidebar.success(f"✅ Produtos: {len(produtos)} registros")
-        
-        # Verificar coluna ID_COD
         if 'ID_COD' not in produtos.columns:
-            st.error("❌ Coluna 'ID_COD' não encontrada em Produtos")
-            st.write("Colunas disponíveis:", produtos.columns.tolist())
+            st.error("❌ Coluna 'ID_COD' não encontrada em produtos")
             return None, None, None, None
         
         # 3. Tabela de Preços
-        st.sidebar.text("💰 Carregando tabela de preços...")
-        arquivo_precos = 'TABELAS_NE.xlsx'
-        
-        if not os.path.exists(arquivo_precos):
-            st.error(f"❌ Arquivo não encontrado: {arquivo_precos}")
-            uploaded_precos = st.file_uploader("📤 Upload: TABELAS_NE.xlsx", type=['xlsx'])
-            if uploaded_precos is not None:
-                tabela_preco = pd.read_excel(uploaded_precos)
-            else:
-                return None, None, None, None
-        else:
-            tabela_preco = pd.read_excel(arquivo_precos)
-        
-        st.sidebar.success(f"✅ Preços: {len(tabela_preco)} registros")
+        tabela_preco = pd.read_excel(arquivo_precos)
         
         # 4. Inadimplência
-        st.sidebar.text("📋 Carregando inadimplência...")
-        arquivo_inadimplencia = 'XLS_Grid_LANCAMENTO A RECEBER.xls'
-        
-        if not os.path.exists(arquivo_inadimplencia):
-            st.error(f"❌ Arquivo não encontrado: {arquivo_inadimplencia}")
-            uploaded_inadimplencia = st.file_uploader("📤 Upload: XLS_Grid_LANCAMENTO A RECEBER.xls", type=['xls', 'xlsx'])
-            if uploaded_inadimplencia is not None:
-                inadimplencia = pd.read_excel(uploaded_inadimplencia)
-            else:
-                return None, None, None, None
-        else:
-            inadimplencia = pd.read_excel(arquivo_inadimplencia)
-        
-        st.sidebar.success(f"✅ Inadimplência: {len(inadimplencia)} registros")
+        inadimplencia = pd.read_excel(arquivo_inadimplencia)
         
         if 'Dt.Vencimento' in inadimplencia.columns:
             inadimplencia['Dt.Vencimento'] = pd.to_datetime(inadimplencia['Dt.Vencimento'], errors='coerce')
         
-        st.sidebar.success("🎉 Todos os dados carregados!")
-        
         return vendas, produtos, tabela_preco, inadimplencia
         
-    except FileNotFoundError as e:
-        st.error(f"❌ Arquivo não encontrado: {str(e)}")
-        st.info("📁 **Possíveis soluções:**")
-        st.markdown("""
-        1. Certifique-se de que os arquivos estão na mesma pasta do script
-        2. Verifique se os nomes dos arquivos estão corretos
-        3. Use o upload manual acima para carregar os arquivos
-        """)
-        return None, None, None, None
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {str(e)}")
-        st.write("Tipo do erro:", type(e).__name__)
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"❌ Erro ao processar dados: {str(e)}")
         return None, None, None, None
+
+# Verificar se arquivos existem localmente
+arquivos_necessarios = {
+    'vendas': 'CONSULTA_VENDEDORES.xlsx',
+    'produtos': 'Produtos_Agrupados_Completos_conciliados.xlsx',
+    'precos': 'TABELAS_NE.xlsx',
+    'inadimplencia': 'XLS_Grid_LANCAMENTO A RECEBER.xls'
+}
+
+# Verificar quais arquivos estão faltando
+arquivos_faltando = []
+for nome, arquivo in arquivos_necessarios.items():
+    # Primeiro tenta na pasta 'dados'
+    caminho_dados = os.path.join('dados', arquivo)
+    if os.path.exists(caminho_dados):
+        arquivos_necessarios[nome] = caminho_dados
+    # Se não, tenta na raiz
+    elif not os.path.exists(arquivo):
+        arquivos_faltando.append(nome)
+
+# Se algum arquivo estiver faltando, solicitar upload
+uploaded_files = {}
+if arquivos_faltando:
+    st.warning(f"⚠️ {len(arquivos_faltando)} arquivo(s) não encontrado(s). Por favor, faça upload:")
+    
+    for nome in arquivos_faltando:
+        arquivo_original = arquivos_necessarios[nome].split('/')[-1]  # Pega só o nome do arquivo
+        
+        if nome == 'vendas':
+            uploaded = st.file_uploader(f"📤 {arquivo_original}", type=['xlsx'], key='upload_vendas')
+            if uploaded:
+                uploaded_files['vendas'] = uploaded
+        elif nome == 'produtos':
+            uploaded = st.file_uploader(f"📦 {arquivo_original}", type=['xlsx'], key='upload_produtos')
+            if uploaded:
+                uploaded_files['produtos'] = uploaded
+        elif nome == 'precos':
+            uploaded = st.file_uploader(f"💰 {arquivo_original}", type=['xlsx'], key='upload_precos')
+            if uploaded:
+                uploaded_files['precos'] = uploaded
+        elif nome == 'inadimplencia':
+            uploaded = st.file_uploader(f"📋 {arquivo_original}", type=['xls', 'xlsx'], key='upload_inadimplencia')
+            if uploaded:
+                uploaded_files['inadimplencia'] = uploaded
+    
+    # Verificar se todos os uploads foram feitos
+    if len(uploaded_files) != len(arquivos_faltando):
+        st.info("👆 Aguardando upload de todos os arquivos necessários...")
+        st.stop()
+    
+    # Usar arquivos uploadados
+    for nome in arquivos_faltando:
+        arquivos_necessarios[nome] = uploaded_files[nome]
+
+# Carregar dados
+with st.spinner("🔄 Carregando dados..."):
+    vendas, produtos, tabela_preco, inadimplencia = carregar_dados_do_arquivo(
+        arquivos_necessarios['vendas'],
+        arquivos_necessarios['produtos'],
+        arquivos_necessarios['precos'],
+        arquivos_necessarios['inadimplencia']
+    )
+
+if vendas is None:
+    st.error("❌ Erro ao carregar dados. Verifique os arquivos e tente novamente.")
+    st.stop()
+
+st.sidebar.success("✅ Dados carregados com sucesso!")
 
 # Função para conciliar vendas com produtos e preços
 @st.cache_data
@@ -174,12 +158,6 @@ def conciliar_dados(vendas, produtos, tabela_preco):
     vendas_completas['Comissao'] = vendas_completas.apply(calcular_comissao, axis=1)
     
     return vendas_completas
-
-# Carregar dados
-vendas, produtos, tabela_preco, inadimplencia = carregar_dados()
-
-if vendas is None:
-    st.stop()
 
 # Conciliar dados
 vendas_completas = conciliar_dados(vendas, produtos, tabela_preco)
