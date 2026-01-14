@@ -5,6 +5,10 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 import os
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
 
 # Configuração da página
 st.set_page_config(page_title="Gestão Comercial", layout="wide", page_icon="📊")
@@ -27,11 +31,7 @@ def carregar_dados_do_arquivo(arquivo_vendas, arquivo_produtos, arquivo_precos, 
         # 2. Produtos
         produtos = pd.read_excel(arquivo_produtos)
         
-        produtos = pd.read_excel(arquivo_produtos)
-
-        # 2. Produtos
-        produtos = pd.read_excel(arquivo_produtos)
-                # 🔧 LIMPEZA FORÇADA DOS NOMES DAS COLUNAS
+        # 🔧 LIMPEZA FORÇADA DOS NOMES DAS COLUNAS
         produtos.columns = (
             produtos.columns
             .astype(str)
@@ -44,10 +44,6 @@ def carregar_dados_do_arquivo(arquivo_vendas, arquivo_produtos, arquivo_precos, 
         if 'ID_COD' not in produtos.columns:
             st.error(f"❌ Coluna 'ID_COD' não encontrada em produtos. Colunas: {list(produtos.columns)}")
             return None, None, None, None
-
-        
-
-
         
         # 3. Tabela de Preços
         tabela_preco = pd.read_excel(arquivo_precos)
@@ -75,11 +71,9 @@ arquivos_necessarios = {
 # Verificar quais arquivos estão faltando
 arquivos_faltando = []
 for nome, arquivo in arquivos_necessarios.items():
-    # Primeiro tenta na pasta 'dados'
     caminho_dados = os.path.join('dados', arquivo)
     if os.path.exists(caminho_dados):
         arquivos_necessarios[nome] = caminho_dados
-    # Se não, tenta na raiz
     elif not os.path.exists(arquivo):
         arquivos_faltando.append(nome)
 
@@ -89,7 +83,7 @@ if arquivos_faltando:
     st.warning(f"⚠️ {len(arquivos_faltando)} arquivo(s) não encontrado(s). Por favor, faça upload:")
     
     for nome in arquivos_faltando:
-        arquivo_original = arquivos_necessarios[nome].split('/')[-1]  # Pega só o nome do arquivo
+        arquivo_original = arquivos_necessarios[nome].split('/')[-1]
         
         if nome == 'vendas':
             uploaded = st.file_uploader(f"📤 {arquivo_original}", type=['xlsx'], key='upload_vendas')
@@ -108,12 +102,10 @@ if arquivos_faltando:
             if uploaded:
                 uploaded_files['inadimplencia'] = uploaded
     
-    # Verificar se todos os uploads foram feitos
     if len(uploaded_files) != len(arquivos_faltando):
         st.info("👆 Aguardando upload de todos os arquivos necessários...")
         st.stop()
     
-    # Usar arquivos uploadados
     for nome in arquivos_faltando:
         arquivos_necessarios[nome] = uploaded_files[nome]
 
@@ -136,7 +128,6 @@ st.sidebar.success("✅ Dados carregados com sucesso!")
 @st.cache_data
 def conciliar_dados(vendas, produtos, tabela_preco):
     """Realiza a conciliação entre vendas, produtos e tabela de preços"""
-    # Merge vendas com produtos
     vendas_completas = vendas.merge(
         produtos[['ID_COD', 'Gramatura', 'Descrição']], 
         left_on='CodigoProduto', 
@@ -144,7 +135,6 @@ def conciliar_dados(vendas, produtos, tabela_preco):
         how='left'
     )
     
-    # Merge com tabela de preços
     vendas_completas = vendas_completas.merge(
         tabela_preco[['ID_COD', 'PRECO']], 
         left_on='CodigoProduto', 
@@ -153,16 +143,13 @@ def conciliar_dados(vendas, produtos, tabela_preco):
         suffixes=('', '_preco')
     )
     
-    # Renomear coluna de preço de tabela
     vendas_completas.rename(columns={'PRECO': 'PrecoTabela'}, inplace=True)
     
-    # Calcular desconto percentual
     vendas_completas['DescontoPerc'] = (
         (vendas_completas['PrecoTabela'] - vendas_completas['PrecoUnit']) / 
         vendas_completas['PrecoTabela'] * 100
     )
     
-    # Calcular comissão
     def calcular_comissao(row):
         if pd.isna(row['PrecoTabela']) or row['PrecoTabela'] == 0:
             return 0
@@ -180,27 +167,72 @@ def conciliar_dados(vendas, produtos, tabela_preco):
 # Conciliar dados
 vendas_completas = conciliar_dados(vendas, produtos, tabela_preco)
 
+# Função para gerar PDF de inadimplência
+def gerar_pdf_inadimplencia(df_inad, vendedor, cliente):
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, height - 50, "Relatório de Inadimplência")
+    
+    y = height - 80
+    p.setFont("Helvetica", 10)
+    p.drawString(50, y, f"Vendedor: {vendedor}")
+    y -= 20
+    p.drawString(50, y, f"Cliente: {cliente}")
+    y -= 20
+    p.drawString(50, y, f"Data: {datetime.now().strftime('%d/%m/%Y')}")
+    
+    y -= 40
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(50, y, "Documento")
+    p.drawString(150, y, "Cliente")
+    p.drawString(300, y, "Vencimento")
+    p.drawString(400, y, "Valor")
+    p.drawString(500, y, "Status")
+    
+    y -= 20
+    p.setFont("Helvetica", 9)
+    
+    for _, row in df_inad.iterrows():
+        if y < 50:
+            p.showPage()
+            y = height - 50
+            p.setFont("Helvetica", 9)
+        
+        p.drawString(50, y, str(row.get('N_Doc', ''))[:15])
+        p.drawString(150, y, str(row.get('Razão Social', ''))[:20])
+        p.drawString(300, y, row['Dt.Vencimento'].strftime('%d/%m/%Y'))
+        p.drawString(400, y, f"R$ {row['Vr.Líquido']:,.2f}")
+        p.drawString(500, y, str(row.get('Status', '')))
+        y -= 15
+    
+    p.save()
+    buffer.seek(0)
+    return buffer
+
 # ========== SIDEBAR ==========
 st.sidebar.title("🎯 Filtros Globais")
 
-# Filtro de Data
+# Filtro de Data com formato DD/MM/AAAA
 data_min = vendas_completas['DataEmissao'].min().date()
 data_max = vendas_completas['DataEmissao'].max().date()
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    data_inicio = st.date_input("Data Início", data_min)
+    data_inicio = st.date_input("Data Início", data_min, format="DD/MM/YYYY")
 with col2:
-    data_fim = st.date_input("Data Fim", data_max)
+    data_fim = st.date_input("Data Fim", data_max, format="DD/MM/YYYY")
 
 # Filtro de Vendedor
 vendedores = (
     ['Todos'] +
     sorted(
         vendas_completas['Vendedor']
-        .dropna()              # remove NaN
-        .astype(str)           # garante texto
-        .str.strip()           # remove espaços
+        .dropna()
+        .astype(str)
+        .str.strip()
         .unique()
         .tolist()
     )
@@ -236,7 +268,6 @@ if modulo == "📊 Relatório BI":
     total_clientes = df_filtrado['CPF_CNPJ'].nunique()
     ticket_medio = df_filtrado['TotalProduto2'].mean()
     
-    # Positivação de Carteira
     hoje = datetime.now()
     data_60_dias = hoje - timedelta(days=60)
     clientes_ativos = df_filtrado[df_filtrado['DataEmissao'] >= data_60_dias]['CPF_CNPJ'].nunique()
@@ -263,14 +294,27 @@ if modulo == "📊 Relatório BI":
     
     with col2:
         st.subheader("🏆 Top 10 Clientes")
-        top_clientes = df_filtrado.groupby('RazaoSocial')['TotalProduto2'].sum().sort_values(ascending=False).head(10)
+        top_clientes = df_filtrado.groupby('RazaoSocial')['TotalProduto2'].sum().sort_values(ascending=True).tail(10)
         fig = px.bar(top_clientes, orientation='h', 
                      labels={'value': 'Faturamento', 'RazaoSocial': 'Cliente'})
         st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
     
-    # Rankings
+    # Produtos Mais Vendidos
+    st.subheader("📦 Produtos Mais Vendidos")
+    produtos_vendidos = df_filtrado.groupby(['CodigoProduto', 'Descrição']).agg({
+        'Quantidade': 'sum',
+        'TotalProduto2': 'sum'
+    }).sort_values('Quantidade', ascending=False).reset_index()
+    produtos_vendidos.columns = ['Código', 'Descrição', 'Qtd Total', 'Faturamento Total']
+    produtos_vendidos['Qtd Total'] = produtos_vendidos['Qtd Total'].apply(lambda x: f"{x:,.0f}")
+    produtos_vendidos['Faturamento Total'] = produtos_vendidos['Faturamento Total'].apply(lambda x: f"R$ {x:,.2f}")
+    st.dataframe(produtos_vendidos.head(20), use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    
+    # Rankings com filtros
     col1, col2 = st.columns(2)
     
     with col1:
@@ -280,29 +324,57 @@ if modulo == "📊 Relatório BI":
             'Comissao': 'sum'
         }).sort_values('TotalProduto2', ascending=False).reset_index()
         ranking_vendedores.columns = ['Vendedor', 'Faturamento', 'Comissão']
-        ranking_vendedores['Faturamento'] = ranking_vendedores['Faturamento'].apply(lambda x: f"R$ {x:,.2f}")
-        ranking_vendedores['Comissão'] = ranking_vendedores['Comissão'].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(ranking_vendedores, use_container_width=True, hide_index=True)
+        
+        # Exibir com filtros de coluna
+        st.dataframe(
+            ranking_vendedores,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Faturamento": st.column_config.NumberColumn(
+                    "Faturamento",
+                    format="R$ %.2f"
+                ),
+                "Comissão": st.column_config.NumberColumn(
+                    "Comissão",
+                    format="R$ %.2f"
+                )
+            }
+        )
     
     with col2:
         st.subheader("💸 Análise de Desconto por Vendedor")
         analise_desconto = df_filtrado.groupby('Vendedor')['DescontoPerc'].mean().sort_values(ascending=False).reset_index()
         analise_desconto.columns = ['Vendedor', 'Desconto Médio (%)']
-        analise_desconto['Desconto Médio (%)'] = analise_desconto['Desconto Médio (%)'].apply(lambda x: f"{x:.2f}%")
-        st.dataframe(analise_desconto, use_container_width=True, hide_index=True)
+        
+        st.dataframe(
+            analise_desconto,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Desconto Médio (%)": st.column_config.NumberColumn(
+                    "Desconto Médio (%)",
+                    format="%.2f%%"
+                )
+            }
+        )
     
     st.markdown("---")
     
-    # Churn - Clientes sem compras há mais de 60 dias
-    st.subheader("⚠️ Clientes sem Compras (últimos 60 dias)")
+    # Churn - Clientes sem compras com filtro de dias
+    st.subheader("⚠️ Clientes sem Compras")
     
-    clientes_recentes_set = set(df_filtrado[df_filtrado['DataEmissao'] >= data_60_dias]['CPF_CNPJ'].unique())
+    # Filtro de dias
+    dias_sem_compra = st.slider("Dias sem compra", min_value=30, max_value=365, value=60, step=30)
+    
+    data_limite_churn = hoje - timedelta(days=dias_sem_compra)
+    clientes_recentes_set = set(df_filtrado[df_filtrado['DataEmissao'] >= data_limite_churn]['CPF_CNPJ'].unique())
     todos_clientes_set = set(vendas_completas['CPF_CNPJ'].unique())
     clientes_churn = todos_clientes_set - clientes_recentes_set
     
     df_churn = vendas_completas[vendas_completas['CPF_CNPJ'].isin(clientes_churn)][['RazaoSocial', 'CPF_CNPJ']].drop_duplicates()
     
-    st.info(f"📊 Total de clientes inativos: {len(df_churn)}")
+    st.info(f"📊 Total de clientes inativos há mais de {dias_sem_compra} dias: {len(df_churn)}")
     st.dataframe(df_churn, use_container_width=True, hide_index=True)
     
     # Histórico detalhado
@@ -313,11 +385,51 @@ if modulo == "📊 Relatório BI":
     
     with tab1:
         cliente_hist = st.selectbox("Selecione o Cliente", df_filtrado['RazaoSocial'].unique())
-        df_cliente = df_filtrado[df_filtrado['RazaoSocial'] == cliente_hist][
-            ['DataEmissao', 'CodigoProduto', 'Descrição', 'Gramatura', 'Quantidade', 
-             'PrecoUnit', 'TotalProduto2', 'CondPagamento']
-        ].sort_values('DataEmissao', ascending=False)
-        st.dataframe(df_cliente, use_container_width=True, hide_index=True)
+        
+        # Preparar dados com última compra
+        df_cliente_temp = df_filtrado[df_filtrado['RazaoSocial'] == cliente_hist].copy()
+        
+        # Agrupar por produto para obter totais
+        df_cliente_agrupado = df_cliente_temp.groupby('CodigoProduto').agg({
+            'DataEmissao': 'max',
+            'Descrição': 'first',
+            'Gramatura': 'first',
+            'Quantidade': 'sum',
+            'PrecoUnit': 'mean',
+            'TotalProduto2': 'sum'
+        }).reset_index()
+        
+        df_cliente_agrupado.columns = [
+            'Código Produto',
+            'Data Última Compra',
+            'Descrição',
+            'Gramatura',
+            'Qtd Total',
+            'Preço Unitário Médio',
+            'Total'
+        ]
+        
+        df_cliente_agrupado = df_cliente_agrupado.sort_values('Data Última Compra', ascending=False)
+        
+        st.dataframe(
+            df_cliente_agrupado,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Data Última Compra": st.column_config.DateColumn(
+                    "Data Última Compra",
+                    format="DD/MM/YYYY"
+                ),
+                "Preço Unitário Médio": st.column_config.NumberColumn(
+                    "Preço Unit. Médio",
+                    format="R$ %.2f"
+                ),
+                "Total": st.column_config.NumberColumn(
+                    "Total",
+                    format="R$ %.2f"
+                )
+            }
+        )
     
     with tab2:
         produto_hist = st.selectbox("Selecione o Produto", df_filtrado['CodigoProduto'].unique())
@@ -325,86 +437,225 @@ if modulo == "📊 Relatório BI":
             ['DataEmissao', 'RazaoSocial', 'Vendedor', 'Quantidade', 
              'PrecoUnit', 'PrecoTabela', 'TotalProduto2', 'CondPagamento']
         ].sort_values('DataEmissao', ascending=False)
-        st.dataframe(df_produto, use_container_width=True, hide_index=True)
+        
+        st.dataframe(
+            df_produto,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "DataEmissao": st.column_config.DateColumn(
+                    "Data Emissão",
+                    format="DD/MM/YYYY"
+                ),
+                "PrecoUnit": st.column_config.NumberColumn(
+                    "Preço Unit.",
+                    format="R$ %.2f"
+                ),
+                "PrecoTabela": st.column_config.NumberColumn(
+                    "Preço Tabela",
+                    format="R$ %.2f"
+                ),
+                "TotalProduto2": st.column_config.NumberColumn(
+                    "Total",
+                    format="R$ %.2f"
+                )
+            }
+        )
 
 # ========== MÓDULO PEDIDOS ==========
 elif modulo == "📦 Pedidos e Comissões":
     st.title("📦 Módulo de Pedidos e Comissões")
     
-    st.info("💡 **Regras de Comissão:** 3% quando Preço = Tabela | 4% quando Preço ≥ Tabela + 6%")
-    
-    # Busca inteligente
+    # Busca inteligente com seleção
     busca = st.text_input("🔍 Buscar por Código ou Descrição do Produto", "")
     
-    # Filtrar produtos
+    # Filtrar produtos baseado na busca
     if busca:
         mask_busca = (produtos['ID_COD'].astype(str).str.contains(busca, case=False, na=False)) | \
                      (produtos['Descrição'].astype(str).str.contains(busca, case=False, na=False))
         produtos_filtrados = produtos[mask_busca]
+        
+        if len(produtos_filtrados) > 0:
+            opcoes_produtos = produtos_filtrados['Descrição'].tolist()
+            produto_selecionado = st.selectbox("Selecione o produto:", opcoes_produtos)
+        else:
+            st.warning("Nenhum produto encontrado com esse termo.")
+            produtos_filtrados = produtos
     else:
         produtos_filtrados = produtos
     
-    # Merge com tabela de preços
+    # Merge com tabela de preços e última compra
     produtos_display = produtos_filtrados.merge(
         tabela_preco[['ID_COD', 'PRECO']], 
         on='ID_COD', 
         how='left'
     )
     
-    # Adicionar coluna de comissão base
-    produtos_display['Comissão Base'] = '3% (4% se +6%)'
+    # Adicionar data da última compra
+    ultima_compra = df_filtrado.groupby('CodigoProduto')['DataEmissao'].max().reset_index()
+    ultima_compra.columns = ['ID_COD', 'Última Compra']
     
-    # Exibir tabela
+    produtos_display = produtos_display.merge(
+        ultima_compra,
+        on='ID_COD',
+        how='left'
+    )
+    
+    # Adicionar taxa de comissão
+    def determinar_tabela(preco):
+        if pd.isna(preco):
+            return 'N/A'
+        return '3%'
+    
+    produtos_display['Tabela'] = produtos_display['PRECO'].apply(determinar_tabela)
+    
+    # Exibir tabela com todas as colunas solicitadas
+    colunas_exibir = ['Última Compra', 'ID_COD', 'Descrição', 'Gramatura', 'PRECO', 'Tabela']
+    
+    # Verificar se coluna Fios existe
+    if 'Fios' in produtos_display.columns:
+        colunas_exibir.insert(4, 'Fios')
+    
     st.dataframe(
-        produtos_display[['ID_COD', 'Descrição', 'Gramatura', 'PRECO', 'Comissão Base']].rename(
-            columns={'ID_COD': 'Código', 'PRECO': 'Preço Tabela'}
+        produtos_display[colunas_exibir].rename(
+            columns={
+                'ID_COD': 'Código',
+                'PRECO': 'Preço Tabela',
+                'Última Compra': 'Última Compra'
+            }
         ),
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "Última Compra": st.column_config.DateColumn(
+                "Última Compra",
+                format="DD/MM/YYYY"
+            ),
+            "Preço Tabela": st.column_config.NumberColumn(
+                "Preço Tabela",
+                format="R$ %.2f"
+            )
+        }
     )
     
     st.markdown("---")
     
-    # Simulador de Comissão
-    st.subheader("🧮 Simulador de Comissão")
+    # Área de Criação de Pedido
+    st.subheader("📝 Criar Proposta Comercial")
     
-    col1, col2, col3 = st.columns(3)
+    # Dados da Empresa (fixos - ajustar conforme sua empresa)
+    with st.expander("📄 Dados da Empresa", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Razão Social", value="SUA EMPRESA LTDA", disabled=True)
+            st.text_input("CNPJ", value="00.000.000/0001-00", disabled=True)
+        with col2:
+            st.text_input("Endereço", value="Rua Exemplo, 123", disabled=True)
+            st.text_input("Telefone", value="(00) 0000-0000", disabled=True)
+    
+    st.markdown("#### Dados do Cliente")
+    
+    # Opção de novo cliente ou existente
+    tipo_cliente = st.radio("", ["Cliente Existente", "Novo Cliente"], horizontal=True)
+    
+    if tipo_cliente == "Cliente Existente":
+        clientes_lista = sorted(vendas_completas['RazaoSocial'].unique().tolist())
+        cliente_pedido = st.selectbox("Selecione o Cliente", clientes_lista)
+        
+        # Buscar dados do cliente
+        cliente_dados = vendas_completas[vendas_completas['RazaoSocial'] == cliente_pedido].iloc[0]
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Razão Social", value=cliente_pedido, disabled=True, key="rs_exist")
+            st.text_input("CPF/CNPJ", value=cliente_dados['CPF_CNPJ'], disabled=True)
+        with col2:
+            st.text_input("Endereço", value="", key="end_exist")
+            st.text_input("Telefone", value="", key="tel_exist")
+    
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            novo_cliente_nome = st.text_input("Razão Social*")
+            novo_cliente_cnpj = st.text_input("CPF/CNPJ*")
+        with col2:
+            novo_cliente_endereco = st.text_input("Endereço")
+            novo_cliente_telefone = st.text_input("Telefone")
+        
+        if st.button("💾 Salvar Novo Cliente"):
+            if novo_cliente_nome and novo_cliente_cnpj:
+                st.success(f"✅ Cliente {novo_cliente_nome} salvo com sucesso!")
+            else:
+                st.error("❌ Preencha os campos obrigatórios (Razão Social e CPF/CNPJ)")
+    
+    st.markdown("#### Itens do Pedido")
+    
+    # Tabela para adicionar produtos ao pedido
+    if 'itens_pedido' not in st.session_state:
+        st.session_state.itens_pedido = []
+    
+    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
     
     with col1:
-        produto_sim = st.selectbox("Produto", produtos['ID_COD'].unique())
-        preco_tab_df = tabela_preco[tabela_preco['ID_COD'] == produto_sim]['PRECO']
-        preco_tab = preco_tab_df.values[0] if len(preco_tab_df) > 0 else 0
-        st.write(f"**Preço Tabela:** R$ {preco_tab:.2f}")
+        produtos_opcoes = produtos['ID_COD'].tolist()
+        produto_add = st.selectbox("Produto", produtos_opcoes, key="prod_add")
     
     with col2:
-        qtd_sim = st.number_input("Quantidade", min_value=1, value=100)
+        qtd_add = st.number_input("Quantidade", min_value=1, value=1, key="qtd_add")
     
     with col3:
-        preco_venda_sim = st.number_input("Preço de Venda", min_value=0.0, value=float(preco_tab))
+        # Buscar preço do produto
+        preco_produto = tabela_preco[tabela_preco['ID_COD'] == produto_add]['PRECO'].values
+        preco_default = float(preco_produto[0]) if len(preco_produto) > 0 else 0.0
+        preco_add = st.number_input("Preço Unit.", min_value=0.0, value=preco_default, key="preco_add")
     
-    total_venda = qtd_sim * preco_venda_sim
+    with col4:
+        st.write("")
+        st.write("")
+        if st.button("➕ Adicionar"):
+            desc_produto = produtos[produtos['ID_COD'] == produto_add]['Descrição'].values[0]
+            st.session_state.itens_pedido.append({
+                'Código': produto_add,
+                'Descrição': desc_produto,
+                'Quantidade': qtd_add,
+                'Preço Unit.': preco_add,
+                'Total': qtd_add * preco_add
+            })
+            st.rerun()
     
-    if preco_venda_sim == preco_tab:
-        comissao_sim = total_venda * 0.03
-        taxa = "3%"
-    elif preco_venda_sim >= (preco_tab * 1.06):
-        comissao_sim = total_venda * 0.04
-        taxa = "4%"
-    else:
-        comissao_sim = total_venda * 0.03
-        taxa = "3%"
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total da Venda", f"R$ {total_venda:,.2f}")
-    col2.metric("Taxa de Comissão", taxa)
-    col3.metric("Comissão", f"R$ {comissao_sim:,.2f}", delta=None)
+    # Exibir itens do pedido
+    if st.session_state.itens_pedido:
+        df_pedido = pd.DataFrame(st.session_state.itens_pedido)
+        st.dataframe(df_pedido, use_container_width=True, hide_index=True)
+        
+        total_pedido = df_pedido['Total'].sum()
+        st.metric("💰 Total do Pedido", f"R$ {total_pedido:,.2f}")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("🗑️ Limpar Pedido"):
+                st.session_state.itens_pedido = []
+                st.rerun()
+        
+        with col2:
+            if st.button("📄 Gerar PDF"):
+                st.info("Funcionalidade de PDF será implementada conforme modelo enviado")
+        
+        with col3:
+            if st.button("🖨️ Imprimir"):
+                st.info("Abrir diálogo de impressão")
+        
+        with col4:
+            if st.button("📱 Enviar WhatsApp"):
+                st.info("Integração com WhatsApp será implementada")
 
 # ========== MÓDULO INADIMPLÊNCIA ==========
 elif modulo == "💰 Inadimplência":
     st.title("💰 Módulo de Inadimplência")
     
-    # Filtros
-    col1, col2, col3 = st.columns(3)
+    # Filtros expandidos
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         funcionarios = ['Todos'] + sorted(inadimplencia['Funcionário'].dropna().unique().tolist())
@@ -415,9 +666,18 @@ elif modulo == "💰 Inadimplência":
         cliente_selecionado = st.selectbox("Cliente", clientes_inad)
     
     with col3:
+        # Adicionar filtro de Estado (se existir coluna Estado/UF)
+        if 'Estado' in inadimplencia.columns or 'UF' in inadimplencia.columns:
+            col_estado = 'Estado' if 'Estado' in inadimplencia.columns else 'UF'
+            estados = ['Todos'] + sorted(inadimplencia[col_estado].dropna().unique().tolist())
+            estado_selecionado = st.selectbox("Estado", estados)
+        else:
+            estado_selecionado = 'Todos'
+    
+    with col4:
         st.write("")
         st.write("")
-        exportar = st.button("📥 Exportar para CSV", use_container_width=True)
+        exportar = st.button("📥 Exportar CSV", use_container_width=True)
     
     # Aplicar filtros
     df_inad = inadimplencia.copy()
@@ -428,50 +688,94 @@ elif modulo == "💰 Inadimplência":
     if cliente_selecionado != 'Todos':
         df_inad = df_inad[df_inad['Razão Social'] == cliente_selecionado]
     
+    if estado_selecionado != 'Todos' and estado_selecionado is not None:
+        if 'Estado' in inadimplencia.columns:
+            df_inad = df_inad[df_inad['Estado'] == estado_selecionado]
+        elif 'UF' in inadimplencia.columns:
+            df_inad = df_inad[df_inad['UF'] == estado_selecionado]
+    
     # Calcular dias de atraso
     hoje = datetime.now()
     df_inad['Dias Atraso'] = (hoje - df_inad['Dt.Vencimento']).dt.days
     df_inad['Status'] = df_inad['Dias Atraso'].apply(lambda x: f"{x} dias" if x > 0 else "A vencer")
     
+    # Calcular quantidade de títulos por cliente
+    titulos_por_cliente = df_inad.groupby('Razão Social').size().reset_index(name='Qtd Títulos')
+    
     # Métricas
     total_aberto = df_inad['Vr.Líquido'].sum()
     qtd_titulos = len(df_inad)
     titulos_vencidos = len(df_inad[df_inad['Dias Atraso'] > 0])
+    qtd_clientes = df_inad['Razão Social'].nunique()
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("💵 Total em Aberto", f"R$ {total_aberto:,.2f}")
-    col2.metric("📄 Quantidade de Títulos", qtd_titulos)
+    col2.metric("📄 Qtd de Títulos", qtd_titulos)
     col3.metric("⚠️ Títulos Vencidos", titulos_vencidos)
+    col4.metric("👥 Clientes", qtd_clientes)
+    
+    st.markdown("---")
+    
+    # Quantidade de títulos por cliente
+    st.subheader("📊 Títulos por Cliente")
+    st.dataframe(
+        titulos_por_cliente.sort_values('Qtd Títulos', ascending=False),
+        use_container_width=True,
+        hide_index=True
+    )
     
     st.markdown("---")
     
     # Tabela de inadimplência
+    st.subheader("📋 Detalhamento de Títulos")
     df_display = df_inad[['N_Doc', 'Razão Social', 'Funcionário', 'Dt.Vencimento', 'Vr.Líquido', 'Status']].copy()
-    df_display['Dt.Vencimento'] = df_display['Dt.Vencimento'].dt.strftime('%d/%m/%Y')
-    df_display['Vr.Líquido'] = df_display['Vr.Líquido'].apply(lambda x: f"R$ {x:,.2f}")
     
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Dt.Vencimento": st.column_config.DateColumn(
+                "Dt. Vencimento",
+                format="DD/MM/YYYY"
+            ),
+            "Vr.Líquido": st.column_config.NumberColumn(
+                "Valor Líquido",
+                format="R$ %.2f"
+            )
+        }
+    )
     
-    # Exportar
-    if exportar:
-        csv = df_inad.to_csv(index=False)
-        st.download_button(
-            label="⬇️ Download CSV",
-            data=csv,
-            file_name=f"inadimplencia_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-        st.success("✅ Arquivo pronto para download! Use para enviar por WhatsApp/Email.")
+    st.markdown("---")
+    
+    # Botões de ação
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if exportar:
+            csv = df_inad.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=csv,
+                file_name=f"inadimplencia_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+            st.success("✅ Arquivo CSV pronto!")
+    
+    with col2:
+        if st.button("📄 Gerar PDF", use_container_width=True):
+            pdf_buffer = gerar_pdf_inadimplencia(df_inad, func_selecionado, cliente_selecionado)
+            st.download_button(
+                label="⬇️ Download PDF",
+                data=pdf_buffer,
+                file_name=f"inadimplencia_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+    
+    with col3:
+        if st.button("📱 Enviar WhatsApp", use_container_width=True):
+            st.info("📱 Integração com WhatsApp será implementada")
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.caption("Sistema de Gestão Comercial v1.0")
-
-
-
-
-
-
-
-
-
+st.sidebar.caption("Sistema de Gestão Comercial v2.0")
