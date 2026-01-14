@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
-import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
-# ---------------- CONFIG ----------------
-st.set_page_config(layout="wide", page_title="CRM Comercial")
+st.set_page_config(page_title="Gestão Comercial", layout="wide")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# =====================================================
+# BLOCO DE PATHS (CORRIGIDO PARA STREAMLIT CLOUD + GITHUB)
+# =====================================================
+
+BASE_DIR = os.getcwd()
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 PATH_VENDAS = os.path.join(DATA_DIR, "CONSULTA_VENDEDORES.xlsx")
@@ -14,8 +18,10 @@ PATH_PRODUTOS = os.path.join(DATA_DIR, "Produtos_Agrupados_Completos_conciliados
 PATH_TABELA = os.path.join(DATA_DIR, "TABELAS_NE.xlsx")
 PATH_INAD = os.path.join(DATA_DIR, "XLS_Grid_LANCAMENTO A RECEBER.xls")
 
+# =====================================================
+# CARGA DE DADOS
+# =====================================================
 
-# ---------------- LOAD ----------------
 @st.cache_data
 def carregar_dados():
     vendas = pd.read_excel(PATH_VENDAS)
@@ -24,186 +30,167 @@ def carregar_dados():
     inad = pd.read_excel(PATH_INAD)
     return vendas, produtos, tabela, inad
 
-
 vendas, produtos, tabela, inad = carregar_dados()
 
-# ---------------- TRANSFORM ----------------
-df = vendas.merge(
-    produtos[['ID_COD', 'Gramatura', 'Descrição']],
-    left_on='CodigoProduto',
-    right_on='ID_COD',
-    how='left'
+# =====================================================
+# TRATAMENTO E CONCILIAÇÃO
+# =====================================================
+
+vendas["DataEmissao"] = pd.to_datetime(vendas["DataEmissao"])
+inad["Dt.Vencimento"] = pd.to_datetime(inad["Dt.Vencimento"])
+
+produtos = produtos.rename(columns={"Descrição": "Descricao"})
+tabela = tabela.rename(columns={"PRECO": "PrecoTabela"})
+
+base = vendas.merge(
+    produtos[["ID_COD", "Gramatura", "Descricao"]],
+    left_on="CodigoProduto",
+    right_on="ID_COD",
+    how="left"
+).merge(
+    tabela[["ID_COD", "PrecoTabela"]],
+    left_on="CodigoProduto",
+    right_on="ID_COD",
+    how="left"
 )
 
-df = df.merge(
-    tabela[['ID_COD', 'PRECO']],
-    on='ID_COD',
-    how='left'
+# =====================================================
+# SIDEBAR
+# =====================================================
+
+st.sidebar.title("Gestão Comercial")
+
+data_inicio = st.sidebar.date_input(
+    "Data inicial",
+    base["DataEmissao"].min().date()
 )
 
-df.rename(columns={
-    'Descrição': 'Fios',
-    'PRECO': 'Preco_Tabela'
-}, inplace=True)
-
-df['DataEmissao'] = pd.to_datetime(df['DataEmissao'])
-
-
-def regra_comissao(row):
-    if row['PrecoUnit'] == row['Preco_Tabela']:
-        return 0.03
-    elif row['PrecoUnit'] >= row['Preco_Tabela'] * 1.06:
-        return 0.04
-    return 0.0
-
-
-df['Comissao_%'] = df.apply(regra_comissao, axis=1)
-df['Valor_Comissao'] = df['TotalLiquidoNF'] * df['Comissao_%']
-
-
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("Filtros Globais")
-
-data_ini, data_fim = st.sidebar.date_input(
-    "Período",
-    [df['DataEmissao'].min(), df['DataEmissao'].max()]
+data_fim = st.sidebar.date_input(
+    "Data final",
+    base["DataEmissao"].max().date()
 )
 
-vendedor_sel = st.sidebar.multiselect(
+vendedor_sel = st.sidebar.selectbox(
     "Vendedor",
-    sorted(df['Vendedor'].dropna().unique())
+    ["Todos"] + sorted(base["Vendedor"].dropna().unique().tolist())
 )
 
-df_filtro = df.copy()
-
-df_filtro = df_filtro[
-    (df_filtro['DataEmissao'] >= pd.to_datetime(data_ini)) &
-    (df_filtro['DataEmissao'] <= pd.to_datetime(data_fim))
+base_filtro = base[
+    (base["DataEmissao"].dt.date >= data_inicio) &
+    (base["DataEmissao"].dt.date <= data_fim)
 ]
 
-if vendedor_sel:
-    df_filtro = df_filtro[df_filtro['Vendedor'].isin(vendedor_sel)]
+if vendedor_sel != "Todos":
+    base_filtro = base_filtro[base_filtro["Vendedor"] == vendedor_sel]
 
-
-# ---------------- MENU ----------------
-menu = st.sidebar.radio(
+modulo = st.sidebar.radio(
     "Módulos",
-    ["BI Comercial", "Pedidos & Comissão", "Inadimplência"]
+    ["Relatório Comercial (BI)", "Pedidos e Comissões", "Inadimplência"]
 )
 
-# ======================================================
-# BI COMERCIAL
-# ======================================================
-if menu == "BI Comercial":
-    st.title("Relatório Comercial (BI)")
+# =====================================================
+# MÓDULO BI
+# =====================================================
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Faturamento", f"R$ {df_filtro['TotalLiquidoNF'].sum():,.2f}")
-    col2.metric("Clientes Ativos", df_filtro['RazaoSocial'].nunique())
-    col3.metric("Ticket Médio", f"R$ {df_filtro['TotalLiquidoNF'].mean():,.2f}")
+if modulo == "Relatório Comercial (BI)":
+
+    st.title("Relatório Comercial Completo")
+
+    faturamento = base_filtro["TotalLiquidoNF"].sum()
+    clientes = base_filtro["CPF_CNPJ"].nunique()
+    ticket = base_filtro["TotalLiquidoNF"].mean()
+
+    clientes_total = base["CPF_CNPJ"].nunique()
+    positivacao = (clientes / clientes_total) * 100
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Faturamento", f"R$ {faturamento:,.2f}")
+    col2.metric("Clientes Ativos", clientes)
+    col3.metric("Ticket Médio", f"R$ {ticket:,.2f}")
+    col4.metric("Positivação", f"{positivacao:.1f}%")
+
+    st.subheader("Evolução Mensal de Faturamento")
+    evolucao = base_filtro.groupby(base_filtro["DataEmissao"].dt.to_period("M"))["TotalLiquidoNF"].sum().reset_index()
+    evolucao["DataEmissao"] = evolucao["DataEmissao"].astype(str)
+    st.line_chart(evolucao, x="DataEmissao", y="TotalLiquidoNF")
 
     st.subheader("Ranking de Clientes")
-    ranking_clientes = (
-        df_filtro.groupby('RazaoSocial')['TotalLiquidoNF']
-        .sum()
-        .sort_values(ascending=False)
-        .reset_index()
-    )
+    ranking_clientes = base_filtro.groupby("RazaoSocial")["TotalLiquidoNF"].sum().sort_values(ascending=False)
     st.dataframe(ranking_clientes)
 
     st.subheader("Ranking de Vendedores")
-    ranking_vend = (
-        df_filtro.groupby('Vendedor')['TotalLiquidoNF']
-        .sum()
-        .sort_values(ascending=False)
-        .reset_index()
-    )
-    st.dataframe(ranking_vend)
+    ranking_vendedores = base_filtro.groupby("Vendedor")["TotalLiquidoNF"].sum().sort_values(ascending=False)
+    st.dataframe(ranking_vendedores)
 
-    st.subheader("Clientes Inativos (+60 dias)")
-    ultima = df.groupby('RazaoSocial')['DataEmissao'].max().reset_index()
-    limite = df['DataEmissao'].max() - pd.Timedelta(days=60)
-    st.dataframe(ultima[ultima['DataEmissao'] < limite])
+    st.subheader("Clientes sem compras há mais de 60 dias")
+    limite = datetime.today() - timedelta(days=60)
+    churn = base.groupby("CPF_CNPJ")["DataEmissao"].max()
+    churn = churn[churn < limite]
+    st.dataframe(churn.reset_index())
 
-    st.subheader("Evolução Mensal de Faturamento")
-    mensal = (
-        df_filtro
-        .set_index('DataEmissao')
-        .resample('M')['TotalLiquidoNF']
-        .sum()
-    )
+    st.subheader("Análise Média de Desconto por Vendedor")
+    base_filtro["Desconto_%"] = (base_filtro["PrecoTabela"] - base_filtro["PrecoUnit"]) / base_filtro["PrecoTabela"] * 100
+    desconto = base_filtro.groupby("Vendedor")["Desconto_%"].mean()
+    st.dataframe(desconto)
 
-    fig, ax = plt.subplots()
-    mensal.plot(ax=ax)
-    st.pyplot(fig)
+# =====================================================
+# MÓDULO PEDIDOS E COMISSÕES
+# =====================================================
 
-# ======================================================
-# PEDIDOS E COMISSÃO
-# ======================================================
-if menu == "Pedidos & Comissão":
-    st.title("Pedidos e Comissão")
+elif modulo == "Pedidos e Comissões":
 
-    termo = st.text_input("Buscar produto (Código ou Descrição)")
+    st.title("Pedidos e Comissões")
 
-    if termo:
-        filtro_prod = produtos[
-            produtos['ID_COD'].astype(str).str.contains(termo, case=False) |
-            produtos['Descrição'].str.contains(termo, case=False)
+    busca = st.text_input("Buscar por Código ou Descrição")
+
+    produtos_filtro = base[[
+        "CodigoProduto", "Descricao", "Gramatura", "PrecoTabela"
+    ]].drop_duplicates()
+
+    if busca:
+        produtos_filtro = produtos_filtro[
+            produtos_filtro["CodigoProduto"].str.contains(busca, case=False, na=False) |
+            produtos_filtro["Descricao"].str.contains(busca, case=False, na=False)
         ]
-        st.dataframe(filtro_prod)
 
-    st.subheader("Pedidos com Comissão")
-    cols = [
-        'Vendedor', 'RazaoSocial', 'CodigoProduto',
-        'Gramatura', 'Fios',
-        'PrecoUnit', 'Preco_Tabela',
-        'Comissao_%', 'Valor_Comissao'
-    ]
-    st.dataframe(df_filtro[cols])
+    st.dataframe(produtos_filtro)
 
-# ======================================================
-# INADIMPLÊNCIA
-# ======================================================
-if menu == "Inadimplência":
-    st.title("Financeiro - Inadimplência")
+    st.info("Regras de Comissão: 3% no preço tabela | 4% se preço ≥ tabela + 6%")
 
-    inad['Dt.Vencimento'] = pd.to_datetime(inad['Dt.Vencimento'])
+# =====================================================
+# MÓDULO INADIMPLÊNCIA
+# =====================================================
 
-    vend_fin = st.multiselect(
+else:
+
+    st.title("Inadimplência")
+
+    vend_sel = st.selectbox(
         "Vendedor",
-        sorted(inad['Funcionário'].dropna().unique())
+        ["Todos"] + sorted(inad["Funcionário"].dropna().unique().tolist())
     )
 
-    cli_fin = st.multiselect(
+    cli_sel = st.selectbox(
         "Cliente",
-        sorted(inad['Razão Social'].dropna().unique())
+        ["Todos"] + sorted(inad["Razão Social"].dropna().unique().tolist())
     )
 
-    data_venc = st.date_input(
-        "Vencimento",
-        [inad['Dt.Vencimento'].min(), inad['Dt.Vencimento'].max()]
-    )
+    inad_filtro = inad.copy()
 
-    inad_f = inad.copy()
+    if vend_sel != "Todos":
+        inad_filtro = inad_filtro[inad_filtro["Funcionário"] == vend_sel]
 
-    if vend_fin:
-        inad_f = inad_f[inad_f['Funcionário'].isin(vend_fin)]
+    if cli_sel != "Todos":
+        inad_filtro = inad_filtro[inad_filtro["Razão Social"] == cli_sel]
 
-    if cli_fin:
-        inad_f = inad_f[inad_f['Razão Social'].isin(cli_fin)]
+    st.dataframe(inad_filtro)
 
-    inad_f = inad_f[
-        (inad_f['Dt.Vencimento'] >= pd.to_datetime(data_venc[0])) &
-        (inad_f['Dt.Vencimento'] <= pd.to_datetime(data_venc[1]))
-    ]
-
-    st.dataframe(
-        inad_f[['Razão Social', 'Funcionário', 'Vr.Líquido', 'Dt.Vencimento', 'Nº Doc']]
-    )
+    total_aberto = inad_filtro["Vr.Líquido"].sum()
+    st.metric("Total em Aberto", f"R$ {total_aberto:,.2f}")
 
     st.download_button(
         "Exportar CSV",
-        inad_f.to_csv(index=False).encode("utf-8"),
+        inad_filtro.to_csv(index=False).encode("utf-8"),
         "inadimplencia.csv",
         "text/csv"
     )
