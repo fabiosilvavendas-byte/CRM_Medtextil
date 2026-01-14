@@ -29,22 +29,24 @@ def carregar_dados_do_arquivo(arquivo_vendas, arquivo_produtos, arquivo_precos, 
         
         produtos = pd.read_excel(arquivo_produtos)
 
-# 🔧 LIMPEZA FORÇADA DOS NOMES DAS COLUNAS
-produtos.columns = (
-    produtos.columns
-    .astype(str)
-    .str.replace('\ufeff', '', regex=True)  # remove BOM
-    .str.replace('\xa0', '', regex=True)    # remove espaço não quebrável
-    .str.strip()                            # remove espaços invisíveis
-)
+        # 2. Produtos
+        produtos = pd.read_excel(arquivo_produtos)
+                # 🔧 LIMPEZA FORÇADA DOS NOMES DAS COLUNAS
+        produtos.columns = (
+            produtos.columns
+            .astype(str)
+            .str.replace('\ufeff', '', regex=True)
+            .str.replace('\xa0', '', regex=True)
+            .str.strip()
+        )
 
-# 🔍 DEBUG VISUAL (mostra exatamente o nome real)
-st.sidebar.write("📦 Colunas Produtos:", [repr(c) for c in produtos.columns])
+        # 🔒 VALIDAÇÃO
+        if 'ID_COD' not in produtos.columns:
+            st.error(f"❌ Coluna 'ID_COD' não encontrada em produtos. Colunas: {list(produtos.columns)}")
+            return None, None, None, None
 
-# 🔒 VALIDAÇÃO
-if 'ID_COD' not in produtos.columns:
-    st.error("❌ Coluna 'ID_COD' não encontrada mesmo após limpeza")
-    return None, None, None, None
+        
+
 
         
         # 3. Tabela de Preços
@@ -453,4 +455,5 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v1.0")
+
 
