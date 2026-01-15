@@ -303,7 +303,32 @@ if modulo == "📊 Relatório BI":
     
     # Produtos Mais Vendidos
     st.subheader("📦 Produtos Mais Vendidos")
-    produtos_vendidos = df_filtrado.groupby(['CodigoProduto', 'Descrição']).agg({
+    
+    # Filtros para produtos mais vendidos
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        prod_data_inicio = st.date_input("Data Início Produto", data_inicio, format="DD/MM/YYYY", key="prod_inicio")
+    with col2:
+        prod_data_fim = st.date_input("Data Fim Produto", data_fim, format="DD/MM/YYYY", key="prod_fim")
+    with col3:
+        filtro_cod_prod = st.text_input("Filtrar por Código", key="filtro_cod_prod")
+    with col4:
+        filtro_desc_prod = st.text_input("Filtrar por Descrição", key="filtro_desc_prod")
+    
+    # Aplicar filtros em produtos mais vendidos
+    df_prod_filtrado = df_filtrado.copy()
+    df_prod_filtrado = df_prod_filtrado[
+        (df_prod_filtrado['DataEmissao'].dt.date >= prod_data_inicio) & 
+        (df_prod_filtrado['DataEmissao'].dt.date <= prod_data_fim)
+    ]
+    
+    if filtro_cod_prod:
+        df_prod_filtrado = df_prod_filtrado[df_prod_filtrado['CodigoProduto'].astype(str).str.contains(filtro_cod_prod, case=False, na=False)]
+    
+    if filtro_desc_prod:
+        df_prod_filtrado = df_prod_filtrado[df_prod_filtrado['Descrição'].astype(str).str.contains(filtro_desc_prod, case=False, na=False)]
+    
+    produtos_vendidos = df_prod_filtrado.groupby(['CodigoProduto', 'Descrição']).agg({
         'Quantidade': 'sum',
         'TotalProduto2': 'sum'
     }).sort_values('Quantidade', ascending=False).reset_index()
@@ -319,7 +344,46 @@ if modulo == "📊 Relatório BI":
     
     with col1:
         st.subheader("🎖️ Ranking de Vendedores")
-        ranking_vendedores = df_filtrado.groupby('Vendedor').agg({
+        
+        # Filtros para ranking de vendedores
+        rank_col1, rank_col2, rank_col3 = st.columns(3)
+        with rank_col1:
+            rank_data_inicio = st.date_input("Data Início Ranking", data_inicio, format="DD/MM/YYYY", key="rank_inicio")
+        with rank_col2:
+            rank_data_fim = st.date_input("Data Fim Ranking", data_fim, format="DD/MM/YYYY", key="rank_fim")
+        with rank_col3:
+            # Filtro por cidade
+            if 'Cidade' in vendas_completas.columns:
+                cidades_rank = ['Todas'] + sorted(vendas_completas['Cidade'].dropna().unique().tolist())
+                cidade_rank = st.selectbox("Cidade", cidades_rank, key="cidade_rank")
+            else:
+                cidade_rank = 'Todas'
+        
+        # Filtro por estado
+        if 'Estado' in vendas_completas.columns or 'UF' in vendas_completas.columns:
+            col_estado_rank = 'Estado' if 'Estado' in vendas_completas.columns else 'UF'
+            estados_rank = ['Todos'] + sorted(vendas_completas[col_estado_rank].dropna().unique().tolist())
+            estado_rank = st.selectbox("Estado", estados_rank, key="estado_rank")
+        else:
+            estado_rank = 'Todos'
+        
+        # Aplicar filtros
+        df_rank_filtrado = df_filtrado.copy()
+        df_rank_filtrado = df_rank_filtrado[
+            (df_rank_filtrado['DataEmissao'].dt.date >= rank_data_inicio) & 
+            (df_rank_filtrado['DataEmissao'].dt.date <= rank_data_fim)
+        ]
+        
+        if cidade_rank != 'Todas' and 'Cidade' in vendas_completas.columns:
+            df_rank_filtrado = df_rank_filtrado[df_rank_filtrado['Cidade'] == cidade_rank]
+        
+        if estado_rank != 'Todos':
+            if 'Estado' in vendas_completas.columns:
+                df_rank_filtrado = df_rank_filtrado[df_rank_filtrado['Estado'] == estado_rank]
+            elif 'UF' in vendas_completas.columns:
+                df_rank_filtrado = df_rank_filtrado[df_rank_filtrado['UF'] == estado_rank]
+        
+        ranking_vendedores = df_rank_filtrado.groupby('Vendedor').agg({
             'TotalProduto2': 'sum',
             'Comissao': 'sum'
         }).sort_values('TotalProduto2', ascending=False).reset_index()
@@ -344,7 +408,9 @@ if modulo == "📊 Relatório BI":
     
     with col2:
         st.subheader("💸 Análise de Desconto por Vendedor")
-        analise_desconto = df_filtrado.groupby('Vendedor')['DescontoPerc'].mean().sort_values(ascending=False).reset_index()
+        
+        # Usar os mesmos filtros do ranking
+        analise_desconto = df_rank_filtrado.groupby('Vendedor')['DescontoPerc'].mean().sort_values(ascending=False).reset_index()
         analise_desconto.columns = ['Vendedor', 'Desconto Médio (%)']
         
         st.dataframe(
@@ -364,18 +430,84 @@ if modulo == "📊 Relatório BI":
     # Churn - Clientes sem compras com filtro de dias
     st.subheader("⚠️ Clientes sem Compras")
     
-    # Filtro de dias
-    dias_sem_compra = st.slider("Dias sem compra", min_value=30, max_value=365, value=60, step=30)
+    # Filtros para clientes sem compra
+    churn_col1, churn_col2, churn_col3, churn_col4 = st.columns(4)
+    
+    with churn_col1:
+        dias_sem_compra = st.slider("Dias sem compra", min_value=30, max_value=365, value=60, step=30)
+    
+    with churn_col2:
+        churn_data_inicio = st.date_input("Data Início Análise", data_inicio, format="DD/MM/YYYY", key="churn_inicio")
+    
+    with churn_col3:
+        churn_data_fim = st.date_input("Data Fim Análise", data_fim, format="DD/MM/YYYY", key="churn_fim")
+    
+    with churn_col4:
+        vendedores_churn = ['Todos'] + sorted(vendas_completas['Vendedor'].dropna().unique().tolist())
+        vendedor_churn = st.selectbox("Vendedor", vendedores_churn, key="vendedor_churn")
+    
+    # Filtro por estado
+    if 'Estado' in vendas_completas.columns or 'UF' in vendas_completas.columns:
+        col_estado_churn = 'Estado' if 'Estado' in vendas_completas.columns else 'UF'
+        estados_churn = ['Todos'] + sorted(vendas_completas[col_estado_churn].dropna().unique().tolist())
+        estado_churn = st.selectbox("Estado", estados_churn, key="estado_churn")
+    else:
+        estado_churn = 'Todos'
+    
+    # Aplicar filtros de período
+    df_churn_filtrado = vendas_completas[
+        (vendas_completas['DataEmissao'].dt.date >= churn_data_inicio) & 
+        (vendas_completas['DataEmissao'].dt.date <= churn_data_fim)
+    ]
+    
+    # Aplicar filtro de vendedor
+    if vendedor_churn != 'Todos':
+        df_churn_filtrado = df_churn_filtrado[df_churn_filtrado['Vendedor'] == vendedor_churn]
+    
+    # Aplicar filtro de estado
+    if estado_churn != 'Todos':
+        if 'Estado' in vendas_completas.columns:
+            df_churn_filtrado = df_churn_filtrado[df_churn_filtrado['Estado'] == estado_churn]
+        elif 'UF' in vendas_completas.columns:
+            df_churn_filtrado = df_churn_filtrado[df_churn_filtrado['UF'] == estado_churn]
     
     data_limite_churn = hoje - timedelta(days=dias_sem_compra)
-    clientes_recentes_set = set(df_filtrado[df_filtrado['DataEmissao'] >= data_limite_churn]['CPF_CNPJ'].unique())
-    todos_clientes_set = set(vendas_completas['CPF_CNPJ'].unique())
+    clientes_recentes_set = set(df_churn_filtrado[df_churn_filtrado['DataEmissao'] >= data_limite_churn]['CPF_CNPJ'].unique())
+    todos_clientes_set = set(df_churn_filtrado['CPF_CNPJ'].unique())
     clientes_churn = todos_clientes_set - clientes_recentes_set
     
-    df_churn = vendas_completas[vendas_completas['CPF_CNPJ'].isin(clientes_churn)][['RazaoSocial', 'CPF_CNPJ']].drop_duplicates()
+    # Calcular valor total que deixou de comprar (baseado na média histórica)
+    df_churn_detalhado = []
+    for cpf in clientes_churn:
+        cliente_hist = vendas_completas[vendas_completas['CPF_CNPJ'] == cpf]
+        razao_social = cliente_hist['RazaoSocial'].iloc[0] if len(cliente_hist) > 0 else 'N/A'
+        valor_medio_mensal = cliente_hist['TotalProduto2'].sum() / max(1, cliente_hist['DataEmissao'].dt.to_period('M').nunique())
+        meses_sem_compra = dias_sem_compra / 30
+        valor_perdido = valor_medio_mensal * meses_sem_compra
+        
+        df_churn_detalhado.append({
+            'Razão Social': razao_social,
+            'CPF_CNPJ': cpf,
+            'Valor Perdido Estimado': valor_perdido
+        })
+    
+    df_churn = pd.DataFrame(df_churn_detalhado)
+    valor_total_perdido = df_churn['Valor Perdido Estimado'].sum()
     
     st.info(f"📊 Total de clientes inativos há mais de {dias_sem_compra} dias: {len(df_churn)}")
-    st.dataframe(df_churn, use_container_width=True, hide_index=True)
+    st.error(f"💰 Valor total estimado perdido: R$ {valor_total_perdido:,.2f}")
+    
+    st.dataframe(
+        df_churn,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Valor Perdido Estimado": st.column_config.NumberColumn(
+                "Valor Perdido Estimado",
+                format="R$ %.2f"
+            )
+        }
+    )
     
     # Histórico detalhado
     st.markdown("---")
@@ -547,11 +679,13 @@ elif modulo == "📦 Pedidos e Comissões":
     with st.expander("📄 Dados da Empresa", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
-            st.text_input("Razão Social", value="SUA EMPRESA LTDA", disabled=True)
-            st.text_input("CNPJ", value="00.000.000/0001-00", disabled=True)
+            st.text_input("Razão Social", value="ULTRA TEXTIL INDUSTRIA E COMERCIO DE PRODUTOS HOSPITALARES LTDA", disabled=True)
+            st.text_input("CNPJ", value="40.357.820/0001-50", disabled=True)
+            st.text_input("Inscrição Estadual", value="16.390.286-0", disabled=True)
         with col2:
-            st.text_input("Endereço", value="Rua Exemplo, 123", disabled=True)
-            st.text_input("Telefone", value="(00) 0000-0000", disabled=True)
+            st.text_input("Endereço", value="R Y DOIS, 355 - GALPÃO 3 - Distrito industrial - João Pessoa - PB", disabled=True)
+            st.text_input("Telefone", value="(83) 3233-9798", disabled=True)
+            st.text_input("Email", value="comercial.ultratextilpb@gmail.com", disabled=True)
     
     st.markdown("#### Dados do Cliente")
     
@@ -559,7 +693,7 @@ elif modulo == "📦 Pedidos e Comissões":
     tipo_cliente = st.radio("", ["Cliente Existente", "Novo Cliente"], horizontal=True)
     
     if tipo_cliente == "Cliente Existente":
-        clientes_lista = sorted(vendas_completas['RazaoSocial'].unique().tolist())
+        clientes_lista = sorted(vendas_completas['RazaoSocial'].dropna().unique().tolist())
         cliente_pedido = st.selectbox("Selecione o Cliente", clientes_lista)
         
         # Buscar dados do cliente
@@ -568,7 +702,8 @@ elif modulo == "📦 Pedidos e Comissões":
         col1, col2 = st.columns(2)
         with col1:
             st.text_input("Razão Social", value=cliente_pedido, disabled=True, key="rs_exist")
-            st.text_input("CPF/CNPJ", value=cliente_dados['CPF_CNPJ'], disabled=True)
+            cpf_cnpj_valor = str(cliente_dados['CPF_CNPJ']) if pd.notna(cliente_dados['CPF_CNPJ']) else ""
+            st.text_input("CPF/CNPJ", value=cpf_cnpj_valor, disabled=True)
         with col2:
             st.text_input("Endereço", value="", key="end_exist")
             st.text_input("Telefone", value="", key="tel_exist")
@@ -590,6 +725,54 @@ elif modulo == "📦 Pedidos e Comissões":
     
     st.markdown("#### Itens do Pedido")
     
+    # Filtros para busca de produtos
+    filtro_col1, filtro_col2 = st.columns(2)
+    with filtro_col1:
+        filtro_codigo_item = st.text_input("🔍 Filtrar por Código", key="filtro_cod_item")
+    with filtro_col2:
+        filtro_produto_item = st.text_input("🔍 Filtrar por Produto", key="filtro_prod_item")
+    
+    # Aplicar filtros nos produtos
+    produtos_disponiveis = produtos.copy()
+    if filtro_codigo_item:
+        produtos_disponiveis = produtos_disponiveis[produtos_disponiveis['ID_COD'].astype(str).str.contains(filtro_codigo_item, case=False, na=False)]
+    if filtro_produto_item:
+        produtos_disponiveis = produtos_disponiveis[produtos_disponiveis['Descrição'].astype(str).str.contains(filtro_produto_item, case=False, na=False)]
+    
+    # Exibir tabela de produtos disponíveis com informações relevantes
+    if len(produtos_disponiveis) > 0:
+        # Merge com tabela de preços
+        produtos_display_pedido = produtos_disponiveis.merge(
+            tabela_preco[['ID_COD', 'PRECO']], 
+            on='ID_COD', 
+            how='left'
+        )
+        
+        colunas_exibir_pedido = ['ID_COD', 'Descrição', 'Gramatura']
+        if 'Apresentacao' in produtos_display_pedido.columns:
+            colunas_exibir_pedido.insert(2, 'Apresentacao')
+        colunas_exibir_pedido.append('PRECO')
+        
+        st.dataframe(
+            produtos_display_pedido[colunas_exibir_pedido].rename(
+                columns={
+                    'ID_COD': 'Código',
+                    'Apresentacao': 'Apresentação',
+                    'PRECO': 'Preço Tabela'
+                }
+            ).head(10),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Preço Tabela": st.column_config.NumberColumn(
+                    "Preço Tabela",
+                    format="R$ %.2f"
+                )
+            }
+        )
+    
+    st.markdown("---")
+    
     # Tabela para adicionar produtos ao pedido
     if 'itens_pedido' not in st.session_state:
         st.session_state.itens_pedido = []
@@ -597,26 +780,35 @@ elif modulo == "📦 Pedidos e Comissões":
     col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
     
     with col1:
-        produtos_opcoes = produtos['ID_COD'].tolist()
-        produto_add = st.selectbox("Produto", produtos_opcoes, key="prod_add")
+        produtos_opcoes = produtos_disponiveis['ID_COD'].tolist()
+        if len(produtos_opcoes) > 0:
+            produto_add = st.selectbox("Produto", produtos_opcoes, key="prod_add")
+        else:
+            st.warning("Nenhum produto encontrado com os filtros aplicados")
+            produto_add = None
     
     with col2:
         qtd_add = st.number_input("Quantidade", min_value=1, value=1, key="qtd_add")
     
     with col3:
         # Buscar preço do produto
-        preco_produto = tabela_preco[tabela_preco['ID_COD'] == produto_add]['PRECO'].values
-        preco_default = float(preco_produto[0]) if len(preco_produto) > 0 else 0.0
+        if produto_add:
+            preco_produto = tabela_preco[tabela_preco['ID_COD'] == produto_add]['PRECO'].values
+            preco_default = float(preco_produto[0]) if len(preco_produto) > 0 else 0.0
+        else:
+            preco_default = 0.0
         preco_add = st.number_input("Preço Unit.", min_value=0.0, value=preco_default, key="preco_add")
     
     with col4:
         st.write("")
         st.write("")
-        if st.button("➕ Adicionar"):
+        if st.button("➕ Adicionar") and produto_add:
             desc_produto = produtos[produtos['ID_COD'] == produto_add]['Descrição'].values[0]
+            gramatura = produtos[produtos['ID_COD'] == produto_add]['Gramatura'].values[0] if 'Gramatura' in produtos.columns else ''
             st.session_state.itens_pedido.append({
                 'Código': produto_add,
                 'Descrição': desc_produto,
+                'Gramatura': gramatura,
                 'Quantidade': qtd_add,
                 'Preço Unit.': preco_add,
                 'Total': qtd_add * preco_add
@@ -699,9 +891,6 @@ elif modulo == "💰 Inadimplência":
     df_inad['Dias Atraso'] = (hoje - df_inad['Dt.Vencimento']).dt.days
     df_inad['Status'] = df_inad['Dias Atraso'].apply(lambda x: f"{x} dias" if x > 0 else "A vencer")
     
-    # Calcular quantidade de títulos por cliente
-    titulos_por_cliente = df_inad.groupby('Razão Social').size().reset_index(name='Qtd Títulos')
-    
     # Métricas
     total_aberto = df_inad['Vr.Líquido'].sum()
     qtd_titulos = len(df_inad)
@@ -716,19 +905,106 @@ elif modulo == "💰 Inadimplência":
     
     st.markdown("---")
     
-    # Quantidade de títulos por cliente
+    # Quantidade de títulos por cliente com informações adicionais
     st.subheader("📊 Títulos por Cliente")
+    
+    # Filtros para títulos por cliente
+    titulos_col1, titulos_col2, titulos_col3 = st.columns(3)
+    with titulos_col1:
+        filtro_vendedor_titulos = st.selectbox("Filtrar por Vendedor", ['Todos'] + sorted(df_inad['Funcionário'].dropna().unique().tolist()), key="filtro_vend_tit")
+    with titulos_col2:
+        if 'Estado' in df_inad.columns or 'UF' in df_inad.columns:
+            col_estado_tit = 'Estado' if 'Estado' in df_inad.columns else 'UF'
+            filtro_estado_titulos = st.selectbox("Filtrar por Estado", ['Todos'] + sorted(df_inad[col_estado_tit].dropna().unique().tolist()), key="filtro_est_tit")
+        else:
+            filtro_estado_titulos = 'Todos'
+    with titulos_col3:
+        filtro_valor_min = st.number_input("Valor Mínimo Total", min_value=0.0, value=0.0, key="filtro_val_min")
+    
+    # Aplicar filtros
+    df_titulos_filtrado = df_inad.copy()
+    if filtro_vendedor_titulos != 'Todos':
+        df_titulos_filtrado = df_titulos_filtrado[df_titulos_filtrado['Funcionário'] == filtro_vendedor_titulos]
+    
+    if filtro_estado_titulos != 'Todos':
+        if 'Estado' in df_inad.columns:
+            df_titulos_filtrado = df_titulos_filtrado[df_titulos_filtrado['Estado'] == filtro_estado_titulos]
+        elif 'UF' in df_inad.columns:
+            df_titulos_filtrado = df_titulos_filtrado[df_titulos_filtrado['UF'] == filtro_estado_titulos]
+    
+    titulos_por_cliente = df_titulos_filtrado.groupby('Razão Social').agg({
+        'N_Doc': 'count',
+        'Vr.Líquido': 'sum',
+        'Funcionário': 'first'
+    }).reset_index()
+    titulos_por_cliente.columns = ['Cliente', 'Qtd Títulos', 'Valor Total', 'Vendedor']
+    
+    # Adicionar estado se disponível
+    if 'Estado' in df_inad.columns or 'UF' in df_inad.columns:
+        col_estado_cliente = 'Estado' if 'Estado' in df_inad.columns else 'UF'
+        estados_cliente = df_titulos_filtrado.groupby('Razão Social')[col_estado_cliente].first().reset_index()
+        titulos_por_cliente = titulos_por_cliente.merge(estados_cliente, left_on='Cliente', right_on='Razão Social', how='left')
+        titulos_por_cliente = titulos_por_cliente.drop('Razão Social', axis=1)
+        titulos_por_cliente.rename(columns={col_estado_cliente: 'Estado'}, inplace=True)
+    
+    # Aplicar filtro de valor mínimo
+    titulos_por_cliente = titulos_por_cliente[titulos_por_cliente['Valor Total'] >= filtro_valor_min]
+    
+    titulos_por_cliente = titulos_por_cliente.sort_values('Qtd Títulos', ascending=False)
+    
     st.dataframe(
-        titulos_por_cliente.sort_values('Qtd Títulos', ascending=False),
+        titulos_por_cliente,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "Valor Total": st.column_config.NumberColumn(
+                "Valor Total",
+                format="R$ %.2f"
+            )
+        }
     )
     
     st.markdown("---")
     
-    # Tabela de inadimplência
+    # Tabela de inadimplência com filtros
     st.subheader("📋 Detalhamento de Títulos")
-    df_display = df_inad[['N_Doc', 'Razão Social', 'Funcionário', 'Dt.Vencimento', 'Vr.Líquido', 'Status']].copy()
+    
+    # Filtros para detalhamento
+    det_col1, det_col2, det_col3, det_col4 = st.columns(4)
+    with det_col1:
+        filtro_vendedor_det = st.selectbox("Filtrar Vendedor", ['Todos'] + sorted(df_inad['Funcionário'].dropna().unique().tolist()), key="filtro_vend_det")
+    with det_col2:
+        if 'Estado' in df_inad.columns or 'UF' in df_inad.columns:
+            col_estado_det = 'Estado' if 'Estado' in df_inad.columns else 'UF'
+            filtro_estado_det = st.selectbox("Filtrar Estado", ['Todos'] + sorted(df_inad[col_estado_det].dropna().unique().tolist()), key="filtro_est_det")
+        else:
+            filtro_estado_det = 'Todos'
+    with det_col3:
+        filtro_cliente_det = st.selectbox("Filtrar Cliente", ['Todos'] + sorted(df_inad['Razão Social'].dropna().unique().tolist()), key="filtro_cli_det")
+    with det_col4:
+        filtro_status = st.selectbox("Status", ['Todos', 'Vencidos', 'A Vencer'], key="filtro_status")
+    
+    # Aplicar filtros no detalhamento
+    df_det_filtrado = df_inad.copy()
+    
+    if filtro_vendedor_det != 'Todos':
+        df_det_filtrado = df_det_filtrado[df_det_filtrado['Funcionário'] == filtro_vendedor_det]
+    
+    if filtro_estado_det != 'Todos':
+        if 'Estado' in df_inad.columns:
+            df_det_filtrado = df_det_filtrado[df_det_filtrado['Estado'] == filtro_estado_det]
+        elif 'UF' in df_inad.columns:
+            df_det_filtrado = df_det_filtrado[df_det_filtrado['UF'] == filtro_estado_det]
+    
+    if filtro_cliente_det != 'Todos':
+        df_det_filtrado = df_det_filtrado[df_det_filtrado['Razão Social'] == filtro_cliente_det]
+    
+    if filtro_status == 'Vencidos':
+        df_det_filtrado = df_det_filtrado[df_det_filtrado['Dias Atraso'] > 0]
+    elif filtro_status == 'A Vencer':
+        df_det_filtrado = df_det_filtrado[df_det_filtrado['Dias Atraso'] <= 0]
+    
+    df_display = df_det_filtrado[['N_Doc', 'Razão Social', 'Funcionário', 'Dt.Vencimento', 'Vr.Líquido', 'Status']].copy()
     
     st.dataframe(
         df_display,
