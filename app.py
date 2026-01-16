@@ -129,7 +129,7 @@ st.sidebar.success("✅ Dados carregados com sucesso!")
 def conciliar_dados(vendas, produtos, tabela_preco):
     """Realiza a conciliação entre vendas, produtos e tabela de preços"""
     vendas_completas = vendas.merge(
-        produtos[['ID_COD', 'Gramatura', 'Descrição']], 
+        produtos[['ID_COD', 'Gramatura', 'DESCRICAONF']], 
         left_on='CodigoProduto', 
         right_on='ID_COD', 
         how='left'
@@ -313,7 +313,7 @@ if modulo == "📊 Relatório BI":
     with col3:
         filtro_cod_prod = st.text_input("Filtrar por Código", key="filtro_cod_prod")
     with col4:
-        filtro_desc_prod = st.text_input("Filtrar por Descrição", key="filtro_desc_prod")
+        filtro_desc_prod = st.text_input("Filtrar por DESCRICAONF", key="filtro_desc_prod")
     
     # Aplicar filtros em produtos mais vendidos
     df_prod_filtrado = df_filtrado.copy()
@@ -326,13 +326,13 @@ if modulo == "📊 Relatório BI":
         df_prod_filtrado = df_prod_filtrado[df_prod_filtrado['CodigoProduto'].astype(str).str.contains(filtro_cod_prod, case=False, na=False)]
     
     if filtro_desc_prod:
-        df_prod_filtrado = df_prod_filtrado[df_prod_filtrado['Descrição'].astype(str).str.contains(filtro_desc_prod, case=False, na=False)]
+        df_prod_filtrado = df_prod_filtrado[df_prod_filtrado['DESCRICAONF'].astype(str).str.contains(filtro_desc_prod, case=False, na=False)]
     
-    produtos_vendidos = df_prod_filtrado.groupby(['CodigoProduto', 'Descrição']).agg({
+    produtos_vendidos = df_prod_filtrado.groupby(['CodigoProduto', 'DESCRICAONF']).agg({
         'Quantidade': 'sum',
         'TotalProduto2': 'sum'
     }).sort_values('Quantidade', ascending=False).reset_index()
-    produtos_vendidos.columns = ['Código', 'Descrição', 'Qtd Total', 'Faturamento Total']
+    produtos_vendidos.columns = ['Código', 'DESCRICAONF', 'Qtd Total', 'Faturamento Total']
     produtos_vendidos['Qtd Total'] = produtos_vendidos['Qtd Total'].apply(lambda x: f"{x:,.0f}")
     produtos_vendidos['Faturamento Total'] = produtos_vendidos['Faturamento Total'].apply(lambda x: f"R$ {x:,.2f}")
     st.dataframe(produtos_vendidos.head(20), use_container_width=True, hide_index=True)
@@ -524,7 +524,7 @@ if modulo == "📊 Relatório BI":
         # Agrupar por produto para obter totais
         df_cliente_agrupado = df_cliente_temp.groupby('CodigoProduto').agg({
             'DataEmissao': 'max',
-            'Descrição': 'first',
+            'DESCRICAONF': 'first',
             'Gramatura': 'first',
             'Quantidade': 'sum',
             'PrecoUnit': 'mean',
@@ -534,7 +534,7 @@ if modulo == "📊 Relatório BI":
         df_cliente_agrupado.columns = [
             'Código Produto',
             'Data Última Compra',
-            'Descrição',
+            'DESCRICAONF',
             'Gramatura',
             'Qtd Total',
             'Preço Unitário Médio',
@@ -599,16 +599,16 @@ elif modulo == "📦 Pedidos e Comissões":
     st.title("📦 Módulo de Pedidos e Comissões")
     
     # Busca inteligente com seleção
-    busca = st.text_input("🔍 Buscar por Código ou Descrição do Produto", "")
+    busca = st.text_input("🔍 Buscar por Código ou DESCRICAONF do Produto", "")
     
     # Filtrar produtos baseado na busca
     if busca:
         mask_busca = (produtos['ID_COD'].astype(str).str.contains(busca, case=False, na=False)) | \
-                     (produtos['Descrição'].astype(str).str.contains(busca, case=False, na=False))
+                     (produtos['DESCRICAONF'].astype(str).str.contains(busca, case=False, na=False))
         produtos_filtrados = produtos[mask_busca]
         
         if len(produtos_filtrados) > 0:
-            opcoes_produtos = produtos_filtrados['Descrição'].tolist()
+            opcoes_produtos = produtos_filtrados['DESCRICAONF'].tolist()
             produto_selecionado = st.selectbox("Selecione o produto:", opcoes_produtos)
         else:
             st.warning("Nenhum produto encontrado com esse termo.")
@@ -642,7 +642,7 @@ elif modulo == "📦 Pedidos e Comissões":
     produtos_display['Tabela'] = produtos_display['PRECO'].apply(determinar_tabela)
     
     # Exibir tabela com todas as colunas solicitadas
-    colunas_exibir = ['Última Compra', 'ID_COD', 'Descrição', 'Gramatura', 'PRECO', 'Tabela']
+    colunas_exibir = ['Última Compra', 'ID_COD', 'DESCRICAONF', 'Gramatura', 'PRECO', 'Tabela']
     
     # Verificar se coluna Fios existe
     if 'Fios' in produtos_display.columns:
@@ -737,7 +737,7 @@ elif modulo == "📦 Pedidos e Comissões":
     if filtro_codigo_item:
         produtos_disponiveis = produtos_disponiveis[produtos_disponiveis['ID_COD'].astype(str).str.contains(filtro_codigo_item, case=False, na=False)]
     if filtro_produto_item:
-        produtos_disponiveis = produtos_disponiveis[produtos_disponiveis['Descrição'].astype(str).str.contains(filtro_produto_item, case=False, na=False)]
+        produtos_disponiveis = produtos_disponiveis[produtos_disponiveis['DESCRICAONF'].astype(str).str.contains(filtro_produto_item, case=False, na=False)]
     
     # Exibir tabela de produtos disponíveis com informações relevantes
     if len(produtos_disponiveis) > 0:
@@ -748,7 +748,7 @@ elif modulo == "📦 Pedidos e Comissões":
             how='left'
         )
         
-        colunas_exibir_pedido = ['ID_COD', 'Descrição', 'Gramatura']
+        colunas_exibir_pedido = ['ID_COD', 'DESCRICAONF', 'Gramatura']
         if 'Apresentacao' in produtos_display_pedido.columns:
             colunas_exibir_pedido.insert(2, 'Apresentacao')
         colunas_exibir_pedido.append('PRECO')
@@ -803,11 +803,11 @@ elif modulo == "📦 Pedidos e Comissões":
         st.write("")
         st.write("")
         if st.button("➕ Adicionar") and produto_add:
-            desc_produto = produtos[produtos['ID_COD'] == produto_add]['Descrição'].values[0]
+            desc_produto = produtos[produtos['ID_COD'] == produto_add]['DESCRICAONF'].values[0]
             gramatura = produtos[produtos['ID_COD'] == produto_add]['Gramatura'].values[0] if 'Gramatura' in produtos.columns else ''
             st.session_state.itens_pedido.append({
                 'Código': produto_add,
-                'Descrição': desc_produto,
+                'DESCRICAONF': desc_produto,
                 'Gramatura': gramatura,
                 'Quantidade': qtd_add,
                 'Preço Unit.': preco_add,
@@ -1055,3 +1055,4 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v2.0")
+
