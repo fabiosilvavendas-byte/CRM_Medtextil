@@ -324,6 +324,10 @@ if modulo == "📊 Relatório BI":
         st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
+    st.subheader("📋 Lista de Clientes Filtrados")
+df_lista_clientes = df_filtrado[['RazaoSocial', 'ValorAjustado', 'DataEmissao', 'Estado']]
+st.dataframe(df_lista_clientes, use_container_width=True)
+st.download_button("📥 Baixar Relatório de Clientes", df_lista_clientes.to_csv(index=False), "clientes.csv")
     
     # Produtos Mais Vendidos
     st.subheader("📦 Produtos Mais Vendidos")
@@ -1079,6 +1083,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v2.0")
+
 
 
 
