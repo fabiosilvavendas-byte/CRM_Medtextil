@@ -9,7 +9,14 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
+def check_password():
+    if "password_correct" not in st.session_state:
+        st.text_input("Senha do App", type="password", on_change=lambda: st.session_state.update({"password_correct": st.session_state.password == "SUA_SENHA_AQUI"}), key="password")
+        return False
+    return st.session_state["password_correct"]
 
+if not check_password():
+    st.stop()
 # Configuração da página
 st.set_page_config(page_title="Gestão Comercial", layout="wide", page_icon="📊")
 
@@ -1055,4 +1062,5 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v2.0")
+
 
