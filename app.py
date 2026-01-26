@@ -13,7 +13,7 @@ def check_password():
     if "password_correct" not in st.session_state:
         st.text_input("Senha do App", type="password", on_change=lambda: st.session_state.update({"password_correct": st.session_state.password == "SUA_SENHA_AQUI"}), key="password")
         return False
-    return st.session_state["password_correct"]
+    return st.session_state["admin123"]
 
 if not check_password():
     st.stop()
@@ -1062,5 +1062,6 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v2.0")
+
 
 
