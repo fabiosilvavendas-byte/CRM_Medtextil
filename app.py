@@ -10,10 +10,27 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 def check_password():
+    """Retorna True se o usuário inseriu a senha correta."""
+    def password_entered():
+        # Verifica se a senha digitada é 'admin123'
+        if st.session_state["password"] == "admin123":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Limpa a senha da memória
+        else:
+            st.session_state["password_correct"] = False
+
     if "password_correct" not in st.session_state:
-        st.text_input("Senha do App", type="password", on_change=lambda: st.session_state.update({"password_correct": st.session_state.password == "SUA_SENHA_AQUI"}), key="password")
+        # Exibe campo de senha
+        st.text_input("Senha de Acesso", type="password", on_change=password_entered, key="password")
         return False
-    return st.session_state["admin123"]
+    elif not st.session_state["password_correct"]:
+        # Senha incorreta, exibe novamente o campo
+        st.text_input("Senha de Acesso", type="password", on_change=password_entered, key="password")
+        st.error("😕 Senha incorreta")
+        return False
+    else:
+        # Senha correta
+        return True
 
 if not check_password():
     st.stop()
@@ -1062,6 +1079,7 @@ elif modulo == "💰 Inadimplência":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Sistema de Gestão Comercial v2.0")
+
 
 
 
