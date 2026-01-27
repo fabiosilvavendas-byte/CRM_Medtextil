@@ -1085,3 +1085,33 @@ st.sidebar.caption("Sistema de Gestão Comercial v2.0")
 
 
 
+
+# ===================== PATCH APLICADO =====================
+# Mantém 100% do código original acima.
+# Ajustes solicitados: regra NF Venda x NF Dev.Venda para BI
+# Base equivalente à fórmula Excel:
+# =SE([@TipoMov]="NF Venda";[@TotalProduto];-[@TotalProduto])
+
+if 'TipoMov' in vendas_completas.columns and 'TotalProduto' in vendas_completas.columns:
+    vendas_completas['Valor_BI'] = np.where(
+        vendas_completas['TipoMov'] == 'NF Venda',
+        vendas_completas['TotalProduto'],
+        -vendas_completas['TotalProduto']
+    )
+else:
+    vendas_completas['Valor_BI'] = vendas_completas.get('TotalProduto2', 0)
+
+# Remover duplicidade de NF para BI
+if 'Numero_NF' in vendas_completas.columns:
+    vendas_completas_bi = vendas_completas.drop_duplicates(
+        subset=['Numero_NF', 'CodigoProduto'],
+        keep='last'
+    )
+else:
+    vendas_completas_bi = vendas_completas.copy()
+
+# A partir deste ponto, relatórios BI podem usar:
+# vendas_completas_bi['Valor_BI']
+# Histórico permanece usando todas as informações (NF Venda e NF Dev.Venda)
+
+# =================== FIM DO PATCH ===================
