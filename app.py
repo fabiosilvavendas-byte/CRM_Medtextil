@@ -1194,24 +1194,8 @@ def processar_dados(df):
     return df
 
 def obter_notas_unicas(df):
-    """
-    Agrega linhas por Numero_NF somando TotalProduto e Valor_Real.
-    Cada NF pode ter múltiplas linhas (uma por produto) — 
-    drop_duplicates pega só a 1ª linha e perde o valor dos demais produtos.
-    """
-    if df.empty:
-        return df
-
-    # Colunas que devem ser SOMADAS por NF
-    cols_soma = [c for c in ['TotalProduto', 'Valor_Real', 'Quantidade'] if c in df.columns]
-
-    # Colunas que devem manter o PRIMEIRO valor (metadados da NF)
-    cols_meta = [c for c in df.columns if c not in cols_soma + ['Numero_NF']]
-
-    agg_dict = {c: 'sum' for c in cols_soma}
-    agg_dict.update({c: 'first' for c in cols_meta})
-
-    return df.groupby('Numero_NF', as_index=False).agg(agg_dict)
+    """Remove duplicatas de Numero_NF mantendo apenas primeira ocorrência"""
+    return df.drop_duplicates(subset=['Numero_NF'], keep='first')
 
 def to_excel(df):
     """Converte DataFrame para Excel"""
@@ -1795,10 +1779,13 @@ if vendedor_filtro != 'Todos':
     df_filtrado = df_filtrado[df_filtrado['Vendedor'] == vendedor_filtro]
 if estado_filtro != 'Todos':
     df_filtrado = df_filtrado[df_filtrado['Estado'] == estado_filtro]
-if mes_filtro != 'Todos':
-    df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_filtro]
-if ano_filtro != 'Todos':
-    df_filtrado = df_filtrado[df_filtrado['Ano'] == ano_filtro]
+# Mês e Ano só são aplicados quando NÃO há filtro de data ativo
+# Evita conflito: data 01/03/2026-23/03/2026 + Ano=2025 = resultado vazio
+if not data_inicial and not data_final:
+    if mes_filtro != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_filtro]
+    if ano_filtro != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['Ano'] == ano_filtro]
 
 notas_unicas = obter_notas_unicas(df_filtrado)
 
