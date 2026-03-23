@@ -625,7 +625,7 @@ GITHUB_REPO = "fabiosilvavendas-byte/CRM_Medtextil2.0"
 GITHUB_FOLDER = "dados"  # ⭐ PASTA ONDE ESTÃO AS PLANILHAS
 GITHUB_TOKEN = None  # Opcional: adicione token se repositório for privado
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def listar_planilhas_github():
     """Lista todos os arquivos Excel da pasta 'dados' no repositório GitHub"""
     try:
@@ -685,7 +685,7 @@ def listar_planilhas_github():
         st.info(f"💡 Verificando: {GITHUB_REPO}/{GITHUB_FOLDER}")
         return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'todas': []}
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=60)
 def carregar_planilha_github(url):
     """Carrega planilha diretamente do GitHub"""
     try:
@@ -1166,7 +1166,6 @@ def aplicar_layout_grafico(fig, height=None):
     fig.update_layout(**layout_kwargs)
     return fig
 
-@st.cache_data
 def processar_dados(df):
     """Aplica as regras de negócio nos dados"""
     df['Valor_Real'] = df.apply(
@@ -1278,7 +1277,6 @@ def formatar_dataframe_moeda(df, colunas_moeda):
             df_formatado[col] = df_formatado[col].apply(lambda x: formatar_moeda(x) if pd.notnull(x) else "R$ 0,00")
     return df_formatado
 
-@st.cache_data
 def processar_inadimplencia(df):
     """Processa dados de inadimplência"""
     # Padronizar nomes das colunas
@@ -1779,13 +1777,10 @@ if vendedor_filtro != 'Todos':
     df_filtrado = df_filtrado[df_filtrado['Vendedor'] == vendedor_filtro]
 if estado_filtro != 'Todos':
     df_filtrado = df_filtrado[df_filtrado['Estado'] == estado_filtro]
-# Mês e Ano só são aplicados quando NÃO há filtro de data ativo
-# Evita conflito: data 01/03/2026-23/03/2026 + Ano=2025 = resultado vazio
-if not data_inicial and not data_final:
-    if mes_filtro != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_filtro]
-    if ano_filtro != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['Ano'] == ano_filtro]
+if mes_filtro != 'Todos':
+    df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_filtro]
+if ano_filtro != 'Todos':
+    df_filtrado = df_filtrado[df_filtrado['Ano'] == ano_filtro]
 
 notas_unicas = obter_notas_unicas(df_filtrado)
 
