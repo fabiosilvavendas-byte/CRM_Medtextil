@@ -1203,6 +1203,10 @@ def obter_notas_unicas(df):
     if len(df) == 0:
         return df
     
+    # DEBUG: Ver quantas linhas temos antes
+    linhas_antes = len(df)
+    total_antes = df['TotalProduto'].sum() if 'TotalProduto' in df.columns else 0
+    
     # Colunas numéricas para somar
     colunas_soma = ['TotalProduto', 'Quantidade']
     if 'Valor_Real' in df.columns:
@@ -1217,6 +1221,22 @@ def obter_notas_unicas(df):
             agg_dict[col] = 'first'
     
     notas_agrupadas = df.groupby('Numero_NF', as_index=False).agg(agg_dict)
+    
+    # DEBUG: Ver resultado
+    linhas_depois = len(notas_agrupadas)
+    total_depois = notas_agrupadas['TotalProduto'].sum() if 'TotalProduto' in notas_agrupadas.columns else 0
+    
+    print(f"""
+    ╔════════════════════════════════════════════════════════════╗
+    ║ DEBUG obter_notas_unicas()                                 ║
+    ╠════════════════════════════════════════════════════════════╣
+    ║ Linhas ANTES (produtos):  {linhas_antes:>6} linhas              ║
+    ║ Linhas DEPOIS (notas):    {linhas_depois:>6} linhas              ║
+    ║ Total ANTES:              R$ {total_antes:>12,.2f}          ║
+    ║ Total DEPOIS:             R$ {total_depois:>12,.2f}          ║
+    ║ Produtos por nota (média): {linhas_antes/linhas_depois if linhas_depois > 0 else 0:>5.2f}                   ║
+    ╚════════════════════════════════════════════════════════════╝
+    """)
     
     return notas_agrupadas
 
