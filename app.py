@@ -1195,50 +1195,23 @@ def processar_dados(df):
 
 def obter_notas_unicas(df):
     """
-    Agrupa produtos da mesma nota e soma os valores.
-    CORREÇÃO CRÍTICA: Cada linha = 1 produto. Mesma nota tem vários produtos.
-    ANTES: drop_duplicates mantinha só o primeiro produto (PERDIA VALORES!)
-    AGORA: groupby soma todos os produtos da mesma nota
+    Agrega linhas por Numero_NF somando TotalProduto e Valor_Real.
+    Cada NF pode ter múltiplas linhas (uma por produto) — 
+    drop_duplicates pega só a 1ª linha e perde o valor dos demais produtos.
     """
-    if len(df) == 0:
+    if df.empty:
         return df
-    
-    # DEBUG: Ver quantas linhas temos antes
-    linhas_antes = len(df)
-    total_antes = df['TotalProduto'].sum() if 'TotalProduto' in df.columns else 0
-    
-    # Colunas numéricas para somar
-    colunas_soma = ['TotalProduto', 'Quantidade']
-    if 'Valor_Real' in df.columns:
-        colunas_soma.append('Valor_Real')
-    
-    # Agrupar por Numero_NF e somar valores dos produtos
-    agg_dict = {col: 'sum' for col in colunas_soma if col in df.columns}
-    
-    # Manter outras colunas importantes (pegar primeiro valor da nota)
-    for col in df.columns:
-        if col not in agg_dict and col != 'Numero_NF':
-            agg_dict[col] = 'first'
-    
-    notas_agrupadas = df.groupby('Numero_NF', as_index=False).agg(agg_dict)
-    
-    # DEBUG: Ver resultado
-    linhas_depois = len(notas_agrupadas)
-    total_depois = notas_agrupadas['TotalProduto'].sum() if 'TotalProduto' in notas_agrupadas.columns else 0
-    
-    print(f"""
-    ╔════════════════════════════════════════════════════════════╗
-    ║ DEBUG obter_notas_unicas()                                 ║
-    ╠════════════════════════════════════════════════════════════╣
-    ║ Linhas ANTES (produtos):  {linhas_antes:>6} linhas              ║
-    ║ Linhas DEPOIS (notas):    {linhas_depois:>6} linhas              ║
-    ║ Total ANTES:              R$ {total_antes:>12,.2f}          ║
-    ║ Total DEPOIS:             R$ {total_depois:>12,.2f}          ║
-    ║ Produtos por nota (média): {linhas_antes/linhas_depois if linhas_depois > 0 else 0:>5.2f}                   ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
-    
-    return notas_agrupadas
+
+    # Colunas que devem ser SOMADAS por NF
+    cols_soma = [c for c in ['TotalProduto', 'Valor_Real', 'Quantidade'] if c in df.columns]
+
+    # Colunas que devem manter o PRIMEIRO valor (metadados da NF)
+    cols_meta = [c for c in df.columns if c not in cols_soma + ['Numero_NF']]
+
+    agg_dict = {c: 'sum' for c in cols_soma}
+    agg_dict.update({c: 'first' for c in cols_meta})
+
+    return df.groupby('Numero_NF', as_index=False).agg(agg_dict)
 
 def to_excel(df):
     """Converte DataFrame para Excel"""
