@@ -1,0 +1,13 @@
+streamlit
+pandas
+plotly
+openpyxl
+xlsxwriter
+requests
+PyGithub
+reportlab
+Pillow
+streamlit-card
+fpdf
+kaleido
+fpdf2
