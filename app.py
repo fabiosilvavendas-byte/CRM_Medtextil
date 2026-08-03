@@ -767,6 +767,7 @@ def listar_planilhas_github():
             'produtos_agrupados': None,
             'pedidos_pendentes': None,
             'tabela_ne': None,
+            'contrato': None,
             'todas': []
         }
         
@@ -802,6 +803,10 @@ def listar_planilhas_github():
                 # Identificar tabela NE
                 if 'TABELA_NE' in content.name.upper().replace(' ', '_'):
                     planilhas['tabela_ne'] = info
+                # Identificar planilha de contratos (Grid Contrato Consulta)
+                if 'CONTRATO' in content.name.upper() and 'CONSULTA' in content.name.upper():
+                    planilhas['contrato'] = info
+
         
         if not planilhas['todas']:
             st.warning(f"⚠️ Nenhuma planilha Excel encontrada na pasta '{GITHUB_FOLDER}'")
@@ -810,7 +815,7 @@ def listar_planilhas_github():
     except Exception as e:
         st.error(f"❌ Erro ao conectar ao GitHub: {str(e)}")
         st.info(f"💡 Verificando: {GITHUB_REPO}/{GITHUB_FOLDER}")
-        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'todas': []}
+        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'tabela_ne': None, 'contrato': None, 'todas': []}
 
 @st.cache_data(ttl=3600)
 def carregar_planilha_github(url):
@@ -876,95 +881,80 @@ _USUARIOS_LEGADO = {
     },
 }
 
-def _render_tela_login(modo="email", show_error=False, msg_erro=""):
-    """Renderiza tela de login — modo 'email' (Supabase) ou 'senha' (legado)."""
+def check_password():
+    """
+    Sistema de autenticação simples e direto.
+    — Supabase configurado: login com e-mail + senha individual.
+    — Sem Supabase: senha compartilhada legada (admin123 / colaborador123).
+    """
+    # Já autenticado — retorna imediatamente
+    if st.session_state.get("password_correct"):
+        return True
+
+    # ── Cabeçalho visual ─────────────────────────────────────────────────
     st.markdown("""
-    <div style="max-width:420px;margin:60px auto 0 auto;background:#FFFFFF;
-                border-radius:16px;padding:40px 36px;
+    <div style="max-width:420px;margin:40px auto 0 auto;background:#FFFFFF;
+                border-radius:16px;padding:36px;
                 box-shadow:0 8px 32px rgba(31,71,136,0.12);
-                border-top:4px solid #1F4788;">
-        <div style="text-align:center;margin-bottom:10px;">
-            <img src="https://i.imgur.com/gt3rgyL.png" height="52"
-                 style="border-radius:8px;" onerror="this.style.display='none'"/>
-        </div>
-        <div style="text-align:center;font-size:1.4rem;font-weight:700;
-                    color:#4A7BC8;margin-bottom:4px;">Medtextil ERP</div>
-        <div style="text-align:center;font-size:0.85rem;color:#6C757D;
-                    margin-bottom:8px;">Dashboard Comercial 2.0</div>
+                border-top:4px solid #1F4788;text-align:center;">
+        <img src="https://i.imgur.com/gt3rgyL.png" height="52"
+             style="border-radius:8px;margin-bottom:10px;"
+             onerror="this.style.display='none'"/>
+        <div style="font-size:1.4rem;font-weight:700;color:#4A7BC8;">
+            Medtextil ERP</div>
+        <div style="font-size:0.85rem;color:#6C757D;margin-top:4px;">
+            Dashboard Comercial 2.0</div>
     </div>
     """, unsafe_allow_html=True)
 
     col_l, col_c, col_r = st.columns([1, 2, 1])
     with col_c:
         st.markdown("<br>", unsafe_allow_html=True)
-        if modo == "email":
-            st.text_input("✉️ E-mail", key="login_email",
-                          placeholder="seu@email.com.br")
-            st.text_input("🔑 Senha", type="password", key="login_senha",
-                          placeholder="Digite sua senha...")
+
+        if supa_disponivel():
+            # ── MODO SUPABASE: e-mail + senha individual ──────────────────
+            email = st.text_input("✉️ E-mail", placeholder="seu@email.com.br",
+                                  key="sb_email")
+            senha = st.text_input("🔑 Senha", type="password",
+                                  placeholder="Digite sua senha...",
+                                  key="sb_senha")
+            if st.button("Entrar →", use_container_width=True,
+                         type="primary", key="btn_entrar_sb"):
+                if not email or not senha:
+                    st.error("Preencha e-mail e senha.")
+                else:
+                    reg = autenticar_usuario(email.strip().lower(), senha)
+                    if reg:
+                        perfil = reg.get("perfil", "vendedor")
+                        st.session_state["password_correct"] = True
+                        st.session_state["usuario"] = {
+                            "id":      reg.get("id", ""),
+                            "email":   reg.get("email", email),
+                            "nome":    reg.get("nome", email),
+                            "tipo":    perfil,
+                            "modulos": _PERFIL_MODULOS.get(
+                                perfil, _MODULOS_COLABORADOR),
+                        }
+                        st.rerun()
+                    else:
+                        st.error("❌ E-mail ou senha incorretos.")
         else:
-            st.text_input("🔑 Senha de acesso", type="password",
-                          key="password_input",
-                          placeholder="Digite sua senha...")
-        if st.button("Entrar →", use_container_width=True,
-                     type="primary", key="btn_login_enter"):
-            st.session_state["_login_tentativa"] = True
-        if show_error:
-            st.error(msg_erro or "Credenciais inválidas. Tente novamente.")
+            # ── MODO LEGADO: senha compartilhada ──────────────────────────
+            senha = st.text_input("🔑 Senha de acesso", type="password",
+                                  placeholder="Digite sua senha...",
+                                  key="leg_senha")
+            if st.button("Entrar →", use_container_width=True,
+                         type="primary", key="btn_entrar_leg"):
+                if not senha:
+                    st.error("Digite a senha.")
+                elif senha in _USUARIOS_LEGADO:
+                    st.session_state["password_correct"] = True
+                    st.session_state["usuario"] = _USUARIOS_LEGADO[senha]
+                    st.rerun()
+                else:
+                    st.error("❌ Senha incorreta.")
 
-def check_password():
-    """
-    Sistema de autenticação dual.
-    — Se o Supabase estiver configurado: login com e-mail + senha individual.
-    — Caso contrário: fallback com senha compartilhada (legado).
-    """
-    # Já autenticado
-    if st.session_state.get("password_correct"):
-        return True
-
-    usa_supabase = supa_disponivel()
-    tentativa = st.session_state.pop("_login_tentativa", False)
-    show_error = st.session_state.pop("_login_erro", False)
-    msg_erro   = st.session_state.pop("_login_msg", "")
-
-    if usa_supabase:
-        # ── Modo Supabase ─────────────────────────────────────────────────
-        _render_tela_login(modo="email", show_error=show_error, msg_erro=msg_erro)
-        if tentativa:
-            email = st.session_state.get("login_email", "").strip().lower()
-            senha = st.session_state.get("login_senha", "")
-            reg = autenticar_usuario(email, senha)
-            if reg:
-                perfil = reg.get("perfil", "vendedor")
-                st.session_state["password_correct"] = True
-                st.session_state["usuario"] = {
-                    "id":      reg.get("id", ""),
-                    "email":   reg.get("email", email),
-                    "nome":    reg.get("nome", email),
-                    "tipo":    perfil,
-                    "modulos": _PERFIL_MODULOS.get(perfil, _MODULOS_COLABORADOR),
-                }
-                st.rerun()
-            else:
-                st.session_state["_login_erro"] = True
-                st.session_state["_login_msg"]  = "E-mail ou senha incorretos."
-                st.rerun()
-        return False
-
-    else:
-        # ── Modo legado (senha compartilhada) ─────────────────────────────
-        _render_tela_login(modo="senha", show_error=show_error, msg_erro=msg_erro)
-        if tentativa:
-            senha = st.session_state.get("password_input", "")
-            if senha in _USUARIOS_LEGADO:
-                st.session_state["password_correct"] = True
-                st.session_state["usuario"] = _USUARIOS_LEGADO[senha]
-                st.rerun()
-            else:
-                st.session_state["_login_erro"] = True
-                st.session_state["_login_msg"]  = "Senha incorreta."
-                st.rerun()
-        return False
+    return False
 
 # ====================== PROCESSAMENTO DE DADOS ======================
 def calcular_prazo_historico(data_emissao, data_vencimento_str):
@@ -2631,6 +2621,59 @@ st.markdown(f"""
     <span style="color:#4A7BC8;font-weight:600;">{_menu_display}</span>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ── Helpers e dados ERP (definidos antes da cadeia de menu) ─────────
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║               ERP — MÓDULO DE PEDIDOS (MVP v1.0)                   ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
+# ── Helpers visuais compartilhados pelos módulos ERP ─────────────────────
+
+def _erp_badge(status):
+    """Retorna HTML do badge colorido para cada status."""
+    cfg = {
+        "rascunho":      ("#F1F5F9", "#64748B", "📝 Rascunho"),
+        "devolvido":     ("#FFF7ED", "#C2410C", "↩️ Devolvido"),
+        "enviado":       ("#EFF6FF", "#1D4ED8", "📤 Aguard. Aprovação"),
+        "aprovado":      ("#F0FDF4", "#15803D", "✅ Aprovado"),
+        "em_separacao":  ("#FFF7ED", "#C2410C", "📦 Em Separação"),
+        "faturado":      ("#14532D", "#FFFFFF", "🧾 Faturado"),
+        "cancelado":     ("#FEF2F2", "#B91C1C", "❌ Cancelado"),
+    }
+    bg, cor, label = cfg.get(status, ("#F1F5F9", "#64748B", status.title()))
+    return (f'<span style="background:{bg};color:{cor};padding:3px 10px;'
+            f'border-radius:12px;font-size:0.78rem;font-weight:600;">'
+            f'{label}</span>')
+
+def _erp_kpi(col, label, valor, cor="#1F4788"):
+    """KPI card compacto para os painéis ERP."""
+    with col:
+        st.markdown(
+            f'<div style="background:#F8FAFC;border-left:3px solid {cor};'
+            f'border-radius:8px;padding:10px 14px;margin-bottom:8px;">'
+            f'<div style="font-size:0.72rem;color:#6C757D;">{label}</div>'
+            f'<div style="font-size:1.15rem;font-weight:700;color:{cor};">{valor}</div>'
+            f'</div>', unsafe_allow_html=True
+        )
+
+def _erp_aviso_sem_supabase():
+    st.warning(
+        "⚙️ **Módulo ERP não configurado.**\n\n"
+        "Para ativar o controle de pedidos, configure as credenciais do Supabase "
+        "em `.streamlit/secrets.toml`:\n\n"
+        "```toml\n[supabase]\nurl = \"https://XXXX.supabase.co\"\n"
+        "key = \"eyJ...\"\n```\n\n"
+        "Consulte a documentação do projeto para criar as tabelas necessárias."
+    )
+
+# ── Dados do usuário atual (disponíveis em todos os módulos ERP) ─────────
+_erp_usuario    = st.session_state.get("usuario", {})
+_erp_user_id    = _erp_usuario.get("id", "")
+_erp_user_nome  = _erp_usuario.get("nome", "Usuário")
+_erp_user_tipo  = _erp_usuario.get("tipo", "colaborador")
+_erp_is_gestor  = _erp_user_tipo in ("admin", "administrador", "gestor")
+
 
 if menu not in modulos_permitidos and menu not in _MENU_ESPECIAIS:
     st.markdown("""
@@ -6240,6 +6283,79 @@ elif menu == "Performance de Vendedores":
         except Exception:
             pass
 
+    # ── Contratos por Vendedor (Realizado x Contratado) ─────────────────────
+    _pv_df_contrato = None
+    _pv_contrato_valor = 0
+    _pv_contrato_total = 0
+    _pv_perc_realizacao = 0.0
+    _pv_contrato_por_vendedor = None
+    _pv_col_data_contrato = None
+    _pv_ctr_filtrado = None
+    if planilhas_disponiveis.get('contrato'):
+        try:
+            _pv_raw_contrato = carregar_planilha_github(planilhas_disponiveis['contrato']['url'])
+            if _pv_raw_contrato is not None:
+                _pv_df_contrato = _pv_raw_contrato.copy()
+                _pv_df_contrato.columns = [str(c).strip() for c in _pv_df_contrato.columns]
+
+                # Normalizar nome do vendedor (coluna "Funcionário") para casar com "Vendedor"
+                if 'Funcionário' in _pv_df_contrato.columns:
+                    _pv_df_contrato['_FuncNorm'] = _pv_df_contrato['Funcionário'].astype(str).str.strip().str.upper()
+                else:
+                    _pv_df_contrato['_FuncNorm'] = ''
+
+                if 'Total Contrato (R$)' in _pv_df_contrato.columns:
+                    _pv_df_contrato['_ValorContrato'] = pd.to_numeric(
+                        _pv_df_contrato['Total Contrato (R$)'], errors='coerce'
+                    ).fillna(0)
+                else:
+                    _pv_df_contrato['_ValorContrato'] = 0
+
+                # Filtro de período — coluna de data é "Dt.Emissão"
+                if 'Dt.Emissão' in _pv_df_contrato.columns:
+                    _pv_col_data_contrato = 'Dt.Emissão'
+                else:
+                    _pv_col_data_contrato = next(
+                        (c for c in _pv_df_contrato.columns if 'data' in c.lower() or 'emiss' in c.lower()), None
+                    )
+                _pv_ctr_filtrado = _pv_df_contrato.copy()
+                if _pv_col_data_contrato:
+                    _pv_ctr_filtrado[_pv_col_data_contrato] = pd.to_datetime(
+                        _pv_ctr_filtrado[_pv_col_data_contrato], errors='coerce'
+                    )
+                    if _pv_periodo == "Mês Atual":
+                        _pv_ctr_filtrado = _pv_ctr_filtrado[
+                            (_pv_ctr_filtrado[_pv_col_data_contrato].dt.month == _pv_now.month) &
+                            (_pv_ctr_filtrado[_pv_col_data_contrato].dt.year == _pv_now.year)
+                        ]
+                    elif _pv_periodo == "Últimos 3 Meses":
+                        _pv_ctr_filtrado = _pv_ctr_filtrado[_pv_ctr_filtrado[_pv_col_data_contrato] >= (_pv_now - pd.DateOffset(months=3))]
+                    elif _pv_periodo == "Últimos 6 Meses":
+                        _pv_ctr_filtrado = _pv_ctr_filtrado[_pv_ctr_filtrado[_pv_col_data_contrato] >= (_pv_now - pd.DateOffset(months=6))]
+                    elif _pv_periodo == "Ano Atual":
+                        _pv_ctr_filtrado = _pv_ctr_filtrado[_pv_ctr_filtrado[_pv_col_data_contrato].dt.year == _pv_now.year]
+                    elif _pv_periodo == "Personalizado":
+                        if _pv_data_ini:
+                            _pv_ctr_filtrado = _pv_ctr_filtrado[_pv_ctr_filtrado[_pv_col_data_contrato] >= pd.to_datetime(_pv_data_ini)]
+                        if _pv_data_fim:
+                            _pv_ctr_filtrado = _pv_ctr_filtrado[_pv_ctr_filtrado[_pv_col_data_contrato] <= pd.to_datetime(_pv_data_fim)]
+
+                _pv_contrato_total = _pv_ctr_filtrado['_ValorContrato'].sum()
+
+                if _pv_vendedor != 'Todos':
+                    _pv_contrato_valor = _pv_ctr_filtrado[
+                        _pv_ctr_filtrado['_FuncNorm'] == str(_pv_vendedor).strip().upper()
+                    ]['_ValorContrato'].sum()
+                else:
+                    _pv_contrato_valor = _pv_contrato_total
+
+                _pv_perc_realizacao = (_pv_fat_bruto / _pv_contrato_valor * 100) if _pv_contrato_valor > 0 else 0
+
+                _pv_contrato_por_vendedor = _pv_ctr_filtrado.groupby('_FuncNorm')['_ValorContrato'].sum().reset_index()
+                _pv_contrato_por_vendedor.columns = ['_FuncNorm', 'ValorContratado']
+        except Exception:
+            pass
+
     # Card de inadimplência
     _pv_ki1, _pv_ki2 = st.columns(2)
     with _pv_ki1:
@@ -6255,6 +6371,25 @@ elif menu == "Performance de Vendedores":
             f"{_pv_perc_inad:.1f}%",
             icon="📊",
             color="#EF4444" if _pv_perc_inad > 5 else "#F4A261"
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Card de Contrato x Faturado
+    _pv_kc1, _pv_kc2 = st.columns(2)
+    with _pv_kc1:
+        render_kpi_card(
+            "Valor Contratado",
+            f"R$ {_pv_contrato_valor:,.0f}",
+            icon="📄",
+            color="#1F4788"
+        )
+    with _pv_kc2:
+        render_kpi_card(
+            "% Realização (Faturado / Contratado)",
+            f"{_pv_perc_realizacao:.1f}%",
+            icon="🎯",
+            color="#28A745" if _pv_perc_realizacao >= 100 else "#F4A261"
         )
 
     st.markdown("---")
@@ -6312,6 +6447,21 @@ elif menu == "Performance de Vendedores":
             _pv_comp = _pv_comp.merge(_pv_prazo_vend, on='Vendedor', how='left')
         else:
             _pv_comp['PrazoMedio'] = 0
+
+        # Valor Contratado e % Realização por vendedor
+        if _pv_contrato_por_vendedor is not None:
+            _pv_comp['_VendNorm'] = _pv_comp['Vendedor'].astype(str).str.strip().str.upper()
+            _pv_comp = _pv_comp.merge(
+                _pv_contrato_por_vendedor, left_on='_VendNorm', right_on='_FuncNorm', how='left'
+            ).drop(columns=['_FuncNorm', '_VendNorm'])
+            _pv_comp['ValorContratado'] = _pv_comp['ValorContratado'].fillna(0)
+        else:
+            _pv_comp['ValorContratado'] = 0
+
+        _pv_comp['PercRealizacao'] = _pv_comp.apply(
+            lambda r: (r['FaturamentoBruto'] / r['ValorContratado'] * 100) if r['ValorContratado'] > 0 else 0,
+            axis=1
+        )
 
         _pv_comp = _pv_comp.sort_values('FaturamentoBruto', ascending=False)
 
@@ -6391,6 +6541,8 @@ elif menu == "Performance de Vendedores":
             lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/D"
         )
         _pv_comp_disp['PrazoMedio']       = _pv_comp_disp['PrazoMedio'].apply(lambda x: f"{x:.0f} dias")
+        _pv_comp_disp['ValorContratado']  = _pv_comp_disp['ValorContratado'].apply(formatar_moeda)
+        _pv_comp_disp['PercRealizacao']   = _pv_comp_disp['PercRealizacao'].apply(lambda x: f"{x:.1f}%")
         _pv_comp_disp.insert(0, 'Posição', range(1, len(_pv_comp_disp) + 1))
         _pv_comp_disp = _pv_comp_disp.rename(columns={
             'FaturamentoBruto': 'Faturamento',
@@ -6400,6 +6552,8 @@ elif menu == "Performance de Vendedores":
             'VolumeTotal':      'Volume',
             'ComissaoMedia':    'Comissão Média',
             'PrazoMedio':       'Prazo Médio',
+            'ValorContratado':  'Valor Contratado',
+            'PercRealizacao':   '% Realização',
         })
         st.dataframe(_pv_comp_disp, use_container_width=True)
 
@@ -6411,7 +6565,9 @@ elif menu == "Performance de Vendedores":
             _regiao_sel=None,
             _periodo_sel=None,
             _now_ts=None,
-            _df_full=None
+            _df_full=None,
+            _ctr_data=None,
+            _ctr_col_data=None
         ):
             # Usar dados passados explicitamente para evitar problema de closure/cache
             _pv_vendas   = _vendas_periodo
@@ -6421,6 +6577,8 @@ elif menu == "Performance de Vendedores":
             _pv_periodo  = _periodo_sel
             _pv_now      = _now_ts
             df           = _df_full
+            _pv_ctr      = _ctr_data
+            _pv_ctr_col  = _ctr_col_data
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 wb = writer.book
@@ -6480,7 +6638,8 @@ elif menu == "Performance de Vendedores":
 
                 cols1 = ['Posição', 'Vendedor', 'Faturamento Bruto (R$)', 'Nº Notas',
                          'Clientes Atendidos', 'Ticket Médio (R$)', 'Volume Total (un)',
-                         'Comissão Média (%)', 'Prazo Médio (dias)']
+                         'Comissão Média (%)', 'Prazo Médio (dias)',
+                         'Valor Contratado (R$)', '% Realização']
 
                 ws1.set_row(0, 22)
                 ws1.write(0, 0, 'COMPARATIVO DE PERFORMANCE DE VENDEDORES', wb.add_format({
@@ -6496,7 +6655,7 @@ elif menu == "Performance de Vendedores":
                 for c_idx, col in enumerate(cols1):
                     ws1.write(3, c_idx, col, fmt_header)
 
-                col_widths1 = [8, 28, 20, 10, 18, 18, 16, 16, 16]
+                col_widths1 = [8, 28, 20, 10, 18, 18, 16, 16, 16, 20, 14]
                 for i, w in enumerate(col_widths1):
                     ws1.set_column(i, i, w)
 
@@ -6512,6 +6671,9 @@ elif menu == "Performance de Vendedores":
                     _com_val = row.get('ComissaoMedia')
                     ws1.write(row_num, 7, (_com_val/100) if pd.notnull(_com_val) else '', fmt_perc)
                     ws1.write(row_num, 8, row.get('PrazoMedio', 0), fmt_num)
+                    ws1.write(row_num, 9, row.get('ValorContratado', 0), fmt_moeda)
+                    _real_val = row.get('PercRealizacao')
+                    ws1.write(row_num, 10, (_real_val/100) if pd.notnull(_real_val) else '', fmt_perc)
 
                 # Linha de total
                 _tot_row = len(_comp_export) + 4
@@ -6524,6 +6686,11 @@ elif menu == "Performance de Vendedores":
                 ws1.write(_tot_row, 6, _comp_export['VolumeTotal'].sum(), fmt_text_bold)
                 ws1.write(_tot_row, 7, '', fmt_text_bold)
                 ws1.write(_tot_row, 8, '', fmt_text_bold)
+                _tot_contratado = _comp_export.get('ValorContratado', pd.Series(dtype=float)).sum()
+                ws1.write(_tot_row, 9, _tot_contratado, fmt_moeda_bold)
+                _tot_fat_geral = _comp_export['FaturamentoBruto'].sum()
+                _perc_real_geral = (_tot_fat_geral / _tot_contratado) if _tot_contratado > 0 else ''
+                ws1.write(_tot_row, 10, _perc_real_geral, fmt_perc_bold)
 
                 # ══════════════════════════════════════════════════════════
                 # ABA 2 — Mês a Mês
@@ -6974,6 +7141,108 @@ elif menu == "Performance de Vendedores":
                 ws4.write(_cs_tot_row, 5, _cs_result['ValorHistorico'].sum(), fmt_moeda_bold)
                 ws4.write(_cs_tot_row, 6, '', fmt_text_bold)
 
+                # ══════════════════════════════════════════════════════════
+                # ABA 5 — Vendas / Contratos (detalhamento)
+                # ══════════════════════════════════════════════════════════
+                ws5 = wb.add_worksheet('Vendas - Contratos')
+                writer.sheets['Vendas - Contratos'] = ws5
+
+                if _pv_ctr is not None and len(_pv_ctr) > 0:
+                    _vc_df = _pv_ctr.copy()
+
+                    # Aplicar filtro de vendedor do módulo
+                    if _pv_vendedor != 'Todos':
+                        _vc_df = _vc_df[_vc_df['_FuncNorm'] == str(_pv_vendedor).strip().upper()]
+
+                    # Aplicar filtro de região do módulo, se a planilha tiver essa informação
+                    _vc_col_regiao = next(
+                        (c for c in _vc_df.columns if c.strip().lower() in
+                         ('estado', 'uf', 'regiao', 'região')), None
+                    )
+                    if _pv_regiao != 'Todas' and _vc_col_regiao:
+                        _vc_df = _vc_df[_vc_df[_vc_col_regiao] == _pv_regiao]
+
+                    # Ordenar pela data de emissão (mais recente primeiro), se disponível
+                    if _pv_ctr_col and _pv_ctr_col in _vc_df.columns:
+                        _vc_df = _vc_df.sort_values(_pv_ctr_col, ascending=False)
+
+                    # Montar colunas de saída: prioridade para Cliente / Data / Valor / Vendedor,
+                    # seguidas de todas as demais colunas originais da planilha (produtos, etc.)
+                    _vc_col_cliente = next(
+                        (c for c in _vc_df.columns if c.strip().lower() in
+                         ('nome cliente', 'cliente', 'razão social', 'razao social')), None
+                    )
+                    _vc_prioritarias = [c for c in [_vc_col_cliente, 'Funcionário', _pv_ctr_col,
+                                                     'Total Contrato (R$)'] if c and c in _vc_df.columns]
+                    _vc_demais = [c for c in _vc_df.columns
+                                  if c not in _vc_prioritarias and not c.startswith('_')]
+                    _vc_cols_final = _vc_prioritarias + _vc_demais
+
+                    _vc_export = _vc_df[_vc_cols_final].copy()
+
+                    _vc_rename = {}
+                    if _vc_col_cliente:
+                        _vc_rename[_vc_col_cliente] = 'Cliente'
+                    if 'Funcionário' in _vc_export.columns:
+                        _vc_rename['Funcionário'] = 'Vendedor'
+                    if _pv_ctr_col and _pv_ctr_col in _vc_export.columns:
+                        _vc_rename[_pv_ctr_col] = 'Data'
+                    if 'Total Contrato (R$)' in _vc_export.columns:
+                        _vc_rename['Total Contrato (R$)'] = 'Valor Contrato (R$)'
+                    _vc_export = _vc_export.rename(columns=_vc_rename)
+
+                    # Título e cabeçalho informativo
+                    _vc_ncols = len(_vc_export.columns)
+                    ws5.merge_range(0, 0, 0, max(_vc_ncols - 1, 1),
+                        'VENDAS / CONTRATOS — DETALHAMENTO',
+                        wb.add_format({'bold': True, 'font_color': '#1F4788', 'font_size': 13,
+                                       'font_name': 'Calibri', 'align': 'center'}))
+                    ws5.write(1, 0,
+                        f'Vendedor: {_pv_vendedor}  |  Região: {_pv_regiao}  |  Período: {_pv_periodo}  |  '
+                        f'Total: {len(_vc_export)} contratos  |  Gerado em: {_pv_now.strftime("%d/%m/%Y %H:%M")}',
+                        wb.add_format({'italic': True, 'font_color': '#6C757D', 'font_size': 9, 'font_name': 'Calibri'}))
+
+                    # Cabeçalho das colunas
+                    ws5.set_row(3, 20)
+                    for c_idx, col in enumerate(_vc_export.columns):
+                        ws5.write(3, c_idx, str(col), fmt_header)
+                        _w = 30 if col in ('Cliente',) else (18 if col in ('Data', 'Vendedor', 'Valor Contrato (R$)') else 20)
+                        ws5.set_column(c_idx, c_idx, _w)
+
+                    # Dados — detecta tipo de cada coluna para formatar adequadamente
+                    fmt_vc_data = wb.add_format({'border': 1, 'font_name': 'Calibri', 'font_size': 9,
+                                                  'num_format': 'DD/MM/YYYY'})
+                    for r_idx, (_, row) in enumerate(_vc_export.iterrows(), start=4):
+                        for c_idx, col in enumerate(_vc_export.columns):
+                            _val = row[col]
+                            if col == 'Data':
+                                _dt = pd.to_datetime(_val, errors='coerce')
+                                ws5.write(r_idx, c_idx, _dt.to_pydatetime() if pd.notnull(_dt) else '', fmt_vc_data)
+                            elif col == 'Valor Contrato (R$)':
+                                ws5.write(r_idx, c_idx, float(_val) if pd.notnull(_val) else 0, fmt_moeda)
+                            elif isinstance(_val, (int, float)) and pd.notnull(_val):
+                                ws5.write(r_idx, c_idx, _val, fmt_num)
+                            else:
+                                ws5.write(r_idx, c_idx, str(_val) if pd.notnull(_val) else '', fmt_text)
+
+                    # Linha de total
+                    _vc_tot_row = len(_vc_export) + 4
+                    _vc_val_col_idx = list(_vc_export.columns).index('Valor Contrato (R$)') \
+                        if 'Valor Contrato (R$)' in _vc_export.columns else None
+                    ws5.write(_vc_tot_row, 0, '', fmt_text_bold)
+                    if _vc_val_col_idx is not None and _vc_val_col_idx > 0:
+                        ws5.merge_range(_vc_tot_row, 1, _vc_tot_row, _vc_val_col_idx - 1,
+                                         f'TOTAL — {len(_vc_export)} contratos', fmt_text_bold)
+                        ws5.write(_vc_tot_row, _vc_val_col_idx,
+                                  _vc_export['Valor Contrato (R$)'].sum(), fmt_moeda_bold)
+                    else:
+                        ws5.merge_range(_vc_tot_row, 0, _vc_tot_row, max(_vc_ncols - 1, 1),
+                                         f'TOTAL — {len(_vc_export)} contratos', fmt_text_bold)
+                else:
+                    ws5.write(0, 0, 'Nenhum dado de contrato disponível para o período/filtro selecionado.',
+                               wb.add_format({'italic': True, 'font_color': '#6C757D', 'font_size': 10,
+                                              'font_name': 'Calibri'}))
+
             output.seek(0)
             return output.getvalue()
 
@@ -6984,10 +7253,12 @@ elif menu == "Performance de Vendedores":
             _regiao_sel=_pv_regiao,
             _periodo_sel=_pv_periodo,
             _now_ts=_pv_now,
-            _df_full=df
+            _df_full=df,
+            _ctr_data=_pv_ctr_filtrado,
+            _ctr_col_data=_pv_col_data_contrato
         )
         st.download_button(
-            "📥 Exportar Comparativo (Excel) — 4 abas",
+            "📥 Exportar Comparativo (Excel) — 5 abas",
             _excel_bytes,
             f"performance_vendedores_{_pv_now.strftime('%Y%m%d_%H%M')}.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -7639,6 +7910,27 @@ elif menu == "Performance de Vendedores":
                 # Clientes reativados
                 _reat_v = _reativados_vend(_vend)
 
+                # Contratado x Faturado (mês de referência)
+                _contrato_v2 = 0.0
+                if _pv_df_contrato is not None:
+                    try:
+                        _ctr_mes_v2 = _pv_df_contrato.copy()
+                        if _pv_col_data_contrato and _pv_col_data_contrato in _ctr_mes_v2.columns:
+                            _ctr_mes_v2[_pv_col_data_contrato] = pd.to_datetime(
+                                _ctr_mes_v2[_pv_col_data_contrato], errors='coerce'
+                            )
+                            _ctr_mes_v2 = _ctr_mes_v2[
+                                (_ctr_mes_v2[_pv_col_data_contrato].dt.month == _mes_card) &
+                                (_ctr_mes_v2[_pv_col_data_contrato].dt.year == _ano_card)
+                            ]
+                        _contrato_v2 = _ctr_mes_v2[
+                            _ctr_mes_v2['_FuncNorm'] == str(_vend).strip().upper()
+                        ]['_ValorContrato'].sum()
+                    except Exception:
+                        _contrato_v2 = 0.0
+                _perc_real_ctr2 = (_fat_r / _contrato_v2 * 100) if _contrato_v2 > 0 else 0
+                _real_cor2 = "#28A745" if _perc_real_ctr2 >= 100 else ("#F4A261" if _perc_real_ctr2 >= 70 else "#EF4444")
+
                 _cor      = "#28A745" if _perc_m >= 100 else ("#F4A261" if _perc_m >= 70 else "#EF4444")
                 _barra    = min(int(_perc_m), 100)
                 _sinal    = "✅" if _perc_m >= 100 else ("⚠️" if _perc_m >= 70 else "🔴")
@@ -7709,6 +8001,23 @@ elif menu == "Performance de Vendedores":
                     f'<div style="text-align:center;">'
                     f'<div style="font-size:1.15rem;font-weight:700;color:{_posit_cor};">{_posit_p:.0f}%</div>'
                     f'<div style="font-size:0.68rem;color:#6C757D;">% posit.</div></div>'
+
+                    f'</div></div>'
+
+                    # Contratado x Faturado
+                    f'<div style="background:#F8FAFF;border-radius:8px;padding:8px 6px;border:1px solid #EEF3FC;margin-top:8px;">'
+                    f'<div style="font-size:0.72rem;color:#6C757D;text-align:center;margin-bottom:6px;font-weight:600;">CONTRATO x FATURADO {_label_mes_card}</div>'
+                    f'<div style="display:flex;justify-content:space-around;align-items:center;">'
+
+                    f'<div style="text-align:center;">'
+                    f'<div style="font-size:1.0rem;font-weight:700;color:#1F4788;">R$ {_contrato_v2:,.0f}</div>'
+                    f'<div style="font-size:0.68rem;color:#6C757D;">Contratado</div></div>'
+
+                    f'<div style="font-size:1.2rem;color:#CDD4E0;">|</div>'
+
+                    f'<div style="text-align:center;">'
+                    f'<div style="font-size:1.15rem;font-weight:700;color:{_real_cor2};">{_perc_real_ctr2:.1f}%</div>'
+                    f'<div style="font-size:0.68rem;color:#6C757D;">% Realização</div></div>'
 
                     f'</div></div>'
                     f'</div>'
@@ -7820,6 +8129,26 @@ elif menu == "Performance de Vendedores":
                 _cresc_m = ((_fat_r - _fat_am) / _fat_am * 100) if _fat_am > 0 else 0
                 _cresc_a = ((_fat_r - _fat_aa) / _fat_aa * 100) if _fat_aa > 0 else 0
                 _reat_v  = _reativados_vend(vendedor)
+
+                # Contratado x Faturado (mês de referência)
+                _contrato_v = 0.0
+                if _pv_df_contrato is not None:
+                    try:
+                        _ctr_mes_v = _pv_df_contrato.copy()
+                        if _pv_col_data_contrato and _pv_col_data_contrato in _ctr_mes_v.columns:
+                            _ctr_mes_v[_pv_col_data_contrato] = pd.to_datetime(
+                                _ctr_mes_v[_pv_col_data_contrato], errors='coerce'
+                            )
+                            _ctr_mes_v = _ctr_mes_v[
+                                (_ctr_mes_v[_pv_col_data_contrato].dt.month == _mes_card) &
+                                (_ctr_mes_v[_pv_col_data_contrato].dt.year == _ano_card)
+                            ]
+                        _contrato_v = _ctr_mes_v[
+                            _ctr_mes_v['_FuncNorm'] == str(vendedor).strip().upper()
+                        ]['_ValorContrato'].sum()
+                    except Exception:
+                        _contrato_v = 0.0
+                _perc_real_ctr = (_fat_r / _contrato_v * 100) if _contrato_v > 0 else 0
 
                 # Meta próximo mês
                 _meta_prox, _meta_prox_lbl = _meta_proximo_mes(vendedor)
@@ -8057,6 +8386,32 @@ elif menu == "Performance de Vendedores":
     </div>
   </div>
 
+  <!-- ROW 3: Contratado | % Realização -->
+  <div class="grid">
+    <div class="card">
+      <div class="card-top">
+        <div class="card-icon">$</div>
+        <div class="card-label">VALOR CONTRATADO</div>
+      </div>
+      <div class="card-body">
+        <div class="card-val">R$ {_contrato_v:,.0f}</div>
+        <div class="card-sub">no mês de referência</div>
+      </div>
+      <div class="card-dot"></div>
+    </div>
+    <div class="card">
+      <div class="card-top">
+        <div class="card-icon">%</div>
+        <div class="card-label">% REALIZAÇÃO</div>
+      </div>
+      <div class="card-body">
+        <div class="card-val {'green' if _perc_real_ctr>=100 else ('orange' if _perc_real_ctr>=70 else 'red')}">{_perc_real_ctr:.1f}%</div>
+        <div class="card-sub">Faturado / Contratado</div>
+      </div>
+      <div class="card-dot"></div>
+    </div>
+  </div>
+
   <!-- META PRÓXIMO MÊS -->
   <div class="prox-box">
     <div class="card-icon" style="width:70px;height:70px;font-size:34px;">M</div>
@@ -8196,6 +8551,26 @@ elif menu == "Performance de Vendedores":
                 _cresc_m = ((_fat_r - _fat_mes_ant) / _fat_mes_ant * 100) if _fat_mes_ant > 0 else 0
                 _cresc_a = ((_fat_r - _base_meta) / _base_meta * 100) if _base_meta > 0 else 0
 
+                # Contratado x Faturado (mês de referência)
+                _contrato_v3 = 0.0
+                if _pv_df_contrato is not None:
+                    try:
+                        _ctr_mes_v3 = _pv_df_contrato.copy()
+                        if _pv_col_data_contrato and _pv_col_data_contrato in _ctr_mes_v3.columns:
+                            _ctr_mes_v3[_pv_col_data_contrato] = pd.to_datetime(
+                                _ctr_mes_v3[_pv_col_data_contrato], errors='coerce'
+                            )
+                            _ctr_mes_v3 = _ctr_mes_v3[
+                                (_ctr_mes_v3[_pv_col_data_contrato].dt.month == _mes_card) &
+                                (_ctr_mes_v3[_pv_col_data_contrato].dt.year == _ano_card)
+                            ]
+                        _contrato_v3 = _ctr_mes_v3[
+                            _ctr_mes_v3['_FuncNorm'] == str(_vend).strip().upper()
+                        ]['_ValorContrato'].sum()
+                    except Exception:
+                        _contrato_v3 = 0.0
+                _perc_real_ctr3 = (_fat_r / _contrato_v3 * 100) if _contrato_v3 > 0 else 0
+
                 # Clientes sem compra há 60 dias (base do vendedor)
                 _corte60 = _pv_now2 - pd.Timedelta(days=60)
                 _ult_cli = _df_nf_hist[_df_nf_hist["Vendedor"] == _vend].groupby("CPF_CNPJ")["DataEmissao"].max()
@@ -8221,6 +8596,9 @@ elif menu == "Performance de Vendedores":
                     ["Meta atingida (%)", f"{_perc_m:.1f}%"],
                     [f"Crescimento vs {_mes_nome_det.get(_mes_ant2,'')[:3]}/{_ano_ant2}", f"{_cresc_m:+.1f}%"],
                     [f"Crescimento vs {_mes_nome_det.get(_mes_meta,'')[:3]}/{_ano_meta}", f"{_cresc_a:+.1f}%"],
+                    ["", ""],
+                    ["Valor Contratado (mês)", f"R$ {_contrato_v3:,.2f}"],
+                    ["% Realização (Faturado / Contratado)", f"{_perc_real_ctr3:.1f}%"],
                     ["", ""],
                     ["Base total de clientes", str(_base_v)],
                     ["Positivados no mês", str(_posit_v)],
@@ -8619,56 +8997,6 @@ elif menu == "Consulta Clientes":
             st.warning(f"Produto {_cod_sel} não encontrado na tabela.")
         else:
             st.info("Selecione um código de produto para consultar os preços.")
-
-# ╔══════════════════════════════════════════════════════════════════════╗
-# ║               ERP — MÓDULO DE PEDIDOS (MVP v1.0)                   ║
-# ╚══════════════════════════════════════════════════════════════════════╝
-
-# ── Helpers visuais compartilhados pelos módulos ERP ─────────────────────
-
-def _erp_badge(status):
-    """Retorna HTML do badge colorido para cada status."""
-    cfg = {
-        "rascunho":      ("#F1F5F9", "#64748B", "📝 Rascunho"),
-        "devolvido":     ("#FFF7ED", "#C2410C", "↩️ Devolvido"),
-        "enviado":       ("#EFF6FF", "#1D4ED8", "📤 Aguard. Aprovação"),
-        "aprovado":      ("#F0FDF4", "#15803D", "✅ Aprovado"),
-        "em_separacao":  ("#FFF7ED", "#C2410C", "📦 Em Separação"),
-        "faturado":      ("#14532D", "#FFFFFF", "🧾 Faturado"),
-        "cancelado":     ("#FEF2F2", "#B91C1C", "❌ Cancelado"),
-    }
-    bg, cor, label = cfg.get(status, ("#F1F5F9", "#64748B", status.title()))
-    return (f'<span style="background:{bg};color:{cor};padding:3px 10px;'
-            f'border-radius:12px;font-size:0.78rem;font-weight:600;">'
-            f'{label}</span>')
-
-def _erp_kpi(col, label, valor, cor="#1F4788"):
-    """KPI card compacto para os painéis ERP."""
-    with col:
-        st.markdown(
-            f'<div style="background:#F8FAFC;border-left:3px solid {cor};'
-            f'border-radius:8px;padding:10px 14px;margin-bottom:8px;">'
-            f'<div style="font-size:0.72rem;color:#6C757D;">{label}</div>'
-            f'<div style="font-size:1.15rem;font-weight:700;color:{cor};">{valor}</div>'
-            f'</div>', unsafe_allow_html=True
-        )
-
-def _erp_aviso_sem_supabase():
-    st.warning(
-        "⚙️ **Módulo ERP não configurado.**\n\n"
-        "Para ativar o controle de pedidos, configure as credenciais do Supabase "
-        "em `.streamlit/secrets.toml`:\n\n"
-        "```toml\n[supabase]\nurl = \"https://XXXX.supabase.co\"\n"
-        "key = \"eyJ...\"\n```\n\n"
-        "Consulte a documentação do projeto para criar as tabelas necessárias."
-    )
-
-# ── Dados do usuário atual (disponíveis em todos os módulos ERP) ─────────
-_erp_usuario    = st.session_state.get("usuario", {})
-_erp_user_id    = _erp_usuario.get("id", "")
-_erp_user_nome  = _erp_usuario.get("nome", "Usuário")
-_erp_user_tipo  = _erp_usuario.get("tipo", "colaborador")
-_erp_is_gestor  = _erp_user_tipo in ("admin", "administrador", "gestor")
 
 # ══════════════════════════════════════════════════════════════════════════
 # MÓDULO ERP 1 — NOVO PEDIDO ERP
