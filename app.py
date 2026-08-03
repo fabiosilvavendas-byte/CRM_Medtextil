@@ -919,15 +919,11 @@ def check_password():
                                   placeholder="Digite sua senha...",
                                   key="sb_senha")
             if st.button("Entrar →", use_container_width=True,
-             type="primary", key="btn_entrar_sb"):
-    if not email or not senha:
-        st.error("Preencha e-mail e senha.")
-    else:
-        reg = autenticar_usuario(email.strip().lower(), senha)
-        else:
-            st.info(f"DEBUG — hash calculado: {_hash_senha(senha)}")
-            reg = autenticar_usuario(email.strip().lower(), senha)
+                         type="primary", key="btn_entrar_sb"):
+                if not email or not senha:
+                    st.error("Preencha e-mail e senha.")
                 else:
+                    st.info(f"DEBUG — hash calculado: {_hash_senha(senha)}")
                     reg = autenticar_usuario(email.strip().lower(), senha)
                     if reg:
                         perfil = reg.get("perfil", "vendedor")
