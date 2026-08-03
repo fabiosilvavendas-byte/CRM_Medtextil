@@ -276,7 +276,7 @@ def autenticar_usuario(email, senha):
     """
     if not supa_disponivel():
         return None
-    registros = supa_select("usuarios", filtros={"email": email, "ativo": True})
+    registros = supa_select("usuarios", filtros={"email": email, "ativo": "true"})
     for reg in registros:
         if reg.get("senha_hash") == _hash_senha(senha):
             return reg
