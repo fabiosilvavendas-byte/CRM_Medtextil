@@ -842,13 +842,13 @@ def carregar_planilha_github(url):
 
 _MODULOS_ADMIN = [
     "Dashboard", "Positivação", "Inadimplência", "Clientes sem Compra",
-    "Histórico", "Preço Médio", "Pedidos Pendentes", "Rankings",
+    "Histórico", "Pedidos Pendentes", "Rankings",
     "Performance de Vendedores", "Consulta Clientes",
     "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos",
 ]
 _MODULOS_GESTOR = [
     "Dashboard", "Positivação", "Inadimplência", "Clientes sem Compra",
-    "Histórico", "Preço Médio", "Pedidos Pendentes", "Rankings",
+    "Histórico", "Pedidos Pendentes", "Rankings",
     "Performance de Vendedores", "Consulta Clientes",
     "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos",
 ]
@@ -1238,7 +1238,7 @@ def gerar_pdf_pedido(dados_cliente, dados_pedido, itens_pedido, observacao=''):
     total_valor = sum([item.get('total', 0) for item in itens_pedido])
     
     # Linha de total (sem bordas superiores, fundo cinza)
-    data_itens.append(['', '', '', '', f"{total_qtde:.0f}", '', f"R$ {total_valor:,.2f}"])
+    data_itens.append(['', '', '', '', f"{total_qtde:.0f}", '', f"R$ {formatar_numero_br(total_valor, 2)}"])
     
     col_widths = [12*mm, 76*mm, 15*mm, 18*mm, 12*mm, 22*mm, 25*mm]
     table_itens = Table(data_itens, colWidths=col_widths)
@@ -1269,7 +1269,7 @@ def gerar_pdf_pedido(dados_cliente, dados_pedido, itens_pedido, observacao=''):
     # RESUMO FINAL
     data_resumo = [
         ['Qtde Itens', 'Frete', 'Total Final'],
-        [f"{total_qtde:.0f}", dados_pedido.get('tipo_frete', 'CIF'), f"R$ {total_valor:,.2f}"]
+        [f"{total_qtde:.0f}", dados_pedido.get('tipo_frete', 'CIF'), f"R$ {formatar_numero_br(total_valor, 2)}"]
     ]
     
     table_resumo = Table(data_resumo, colWidths=[60*mm, 60*mm, 70*mm])
@@ -1464,6 +1464,14 @@ def formatar_dataframe_moeda(df, colunas_moeda):
         if col in df_formatado.columns:
             df_formatado[col] = df_formatado[col].apply(lambda x: formatar_moeda(x) if pd.notnull(x) else "R$ 0,00")
     return df_formatado
+
+def formatar_numero_br(valor, casas=0):
+    """Formata número no padrão brasileiro (ponto milhar, vírgula decimal), sem prefixo R$"""
+    try:
+        texto = f"{valor:,.{casas}f}"
+    except (ValueError, TypeError):
+        return str(valor)
+    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
 
 @st.cache_data(ttl=3600)
 def processar_inadimplencia(df):
@@ -1677,10 +1685,10 @@ def gerar_proposta_pdf_historico(cliente_info_dict, historico_df, vendas_resumo)
             pdf.set_font('Helvetica', '', 7)
             cod  = str(row.get('CodigoProduto', ''))[:8]
             nome = str(row.get('NomeProduto', ''))[:38]
-            qtd  = f"{row.get('Quantidade', 0):,.0f}"
+            qtd  = f"{formatar_numero_br(row.get('Quantidade', 0), 0)}"
             prazo = str(row.get('PrazoHistorico', '-'))[:10] if 'PrazoHistorico' in row.index else '-'
-            preco = f"R$ {row.get('PrecoUnit', 0):,.2f}"
-            total = f"R$ {row.get('TotalProduto', 0):,.2f}"
+            preco = f"R$ {formatar_numero_br(row.get('PrecoUnit', 0), 2)}"
+            total = f"R$ {formatar_numero_br(row.get('TotalProduto', 0), 2)}"
             row_vals = [cod, nome, qtd, prazo, preco, total]
             aligns   = ['C', 'L', 'C', 'C', 'R', 'R']
             for cw, rv, al in zip(cols_w, row_vals, aligns):
@@ -1694,7 +1702,7 @@ def gerar_proposta_pdf_historico(cliente_info_dict, historico_df, vendas_resumo)
         pdf.set_text_color(255, 255, 255)
         pdf.set_font('Helvetica', 'B', 9)
         pdf.cell(sum(cols_w[:5]), 7, 'TOTAL GERAL', border=1, fill=True, align='R')
-        pdf.cell(cols_w[5], 7, f'R$ {total_geral:,.2f}', border=1, fill=True, align='R')
+        pdf.cell(cols_w[5], 7, f'R$ {formatar_numero_br(total_geral, 2)}', border=1, fill=True, align='R')
         pdf.ln(8)
 
         # ── Rodapé da proposta ────────────────────────────────────────────
@@ -1760,12 +1768,12 @@ def gerar_proposta_pdf_historico(cliente_info_dict, historico_df, vendas_resumo)
             grp = grp.sort_values('TotalProduto', ascending=False)
             for _, r in grp.iterrows():
                 rows.append([str(r['CodigoProduto'])[:8], str(r['NomeProduto'])[:40],
-                             f"{r['Quantidade']:,.0f}", f"R$ {r['PrecoUnit']:,.2f}",
-                             f"R$ {r['TotalProduto']:,.2f}"])
+                             f"{formatar_numero_br(r['Quantidade'], 0)}", f"R$ {formatar_numero_br(r['PrecoUnit'], 2)}",
+                             f"R$ {formatar_numero_br(r['TotalProduto'], 2)}"])
         except Exception:
             pass
         total_g = vendas_only['TotalProduto'].sum() if len(vendas_only) > 0 else 0
-        rows.append(['','','','Total Geral', f'R$ {total_g:,.2f}'])
+        rows.append(['','','','Total Geral', f'R$ {formatar_numero_br(total_g, 2)}'])
 
         t_prod = Table(rows, colWidths=[20*mm, 80*mm, 18*mm, 28*mm, 28*mm])
         t_prod.setStyle(TableStyle([
@@ -1882,6 +1890,16 @@ with st.sidebar:
         if planilhas_disponiveis.get('produtos_agrupados'):
             st.success(f"✅ Produtos: {planilhas_disponiveis['produtos_agrupados']['nome']}")
 
+        if planilhas_disponiveis.get('contrato'):
+            st.success(f"✅ Contratos: {planilhas_disponiveis['contrato']['nome']}")
+        else:
+            st.warning("⚠️ Planilha de contratos não encontrada")
+
+        if planilhas_disponiveis.get('pedidos_pendentes'):
+            st.success(f"✅ Pedidos Pendentes: {planilhas_disponiveis['pedidos_pendentes']['nome']}")
+        else:
+            st.warning("⚠️ Planilha de pedidos pendentes não encontrada")
+
         if st.button("🔄 Recarregar Dados", use_container_width=True, key="btn_reload"):
             st.cache_data.clear()
             st.rerun()
@@ -1982,7 +2000,6 @@ _DESC = {
     "Inadimplência":      "Títulos em aberto e atrasos",
     "Clientes sem Compra":"Clientes inativos para reativar",
     "Histórico":          "Consulta por cliente ou vendedor",
-    "Preço Médio":        "Análise de preços por produto",
     "Pedidos Pendentes":  "Itens aguardando faturamento",
     "Rankings":           "Top vendedores e clientes",
     "Performance de Vendedores": "Painel completo de KPIs por vendedor",
@@ -1996,7 +2013,6 @@ _CATEGORIAS_NAV = {
         "Performance de Vendedores",
         "Positivação",
         "Clientes sem Compra",
-        "Preço Médio",
         "Novo Pedido",
     ],
     "PEDIDOS ERP": [
@@ -2027,7 +2043,7 @@ _ALIAS_MODULO = {
 }
 _ICONES_NAV = {
     "Dashboard":"▦","Positivação":"✓","Inadimplência":"⚠",
-    "Clientes sem Compra":"＋","Histórico":"◷","Preço Médio":"＄",
+    "Clientes sem Compra":"＋","Histórico":"◷",
     "Pedidos Pendentes":"▣","Rankings":"▲","Performance de Vendedores":"★",
     "Novo Pedido":"📝","Tabela de Preços":"＄","Histórico do Cliente":"◷",
     "Novo Pedido ERP":"🆕","Meus Pedidos":"📋",
@@ -2045,7 +2061,7 @@ if 'menu_option' not in st.session_state:
 
 modulos_visiveis = modulos_permitidos if modulos_permitidos else [
     "Dashboard","Positivação","Inadimplência","Clientes sem Compra",
-    "Histórico","Preço Médio","Pedidos Pendentes","Rankings","Performance de Vendedores"
+    "Histórico","Pedidos Pendentes","Rankings","Performance de Vendedores"
 ]
 
 # ══════════════════════════════════════════════════════════════════
@@ -2058,7 +2074,7 @@ modulos_visiveis = modulos_permitidos if modulos_permitidos else [
 # _ICONES_NAV já definido acima com todos os módulos (incluindo Novo Pedido, Tabela de Preços, Histórico do Cliente)
 _ICONES_CARD = {
     "Dashboard":"▦","Positivação":"✓","Inadimplência":"⚠",
-    "Clientes sem Compra":"＋","Histórico":"◷","Preço Médio":"＄",
+    "Clientes sem Compra":"＋","Histórico":"◷",
     "Pedidos Pendentes":"▣","Rankings":"▲","Performance de Vendedores":"★",
     "Consulta Clientes":"＄","Histórico do Cliente":"◷","Novo Pedido":"📝",
 }
@@ -2397,7 +2413,7 @@ if st.session_state.menu_option == '__home__':
             (notas_unicas['DataEmissao'].dt.month == _mes) &
             (notas_unicas['DataEmissao'].dt.year  == _ano_anterior)
         ]['TotalProduto'].sum()
-        _info_dash_ano_ant = f" · R$ {vendas_mes_ano_ant:,.0f} em {_meses_pt[_mes]}/{_ano_anterior}"
+        _info_dash_ano_ant = f" · R$ {formatar_numero_br(vendas_mes_ano_ant, 0)} em {_meses_pt[_mes]}/{_ano_anterior}"
     except Exception:
         _info_dash_ano_ant = ""
 
@@ -2409,7 +2425,7 @@ if st.session_state.menu_option == '__home__':
             (df['DataEmissao'].dt.month==_mes) &
             (df['DataEmissao'].dt.year==_ano)
         ]['CPF_CNPJ'].nunique()
-        _info_posit   = f"{_base_total:,} na base · {_posit_mes:,} positivados no mês"
+        _info_posit   = f"{formatar_numero_br(_base_total, 0)} na base · {formatar_numero_br(_posit_mes, 0)} positivados no mês"
     except Exception:
         _info_posit   = "Base de clientes"
 
@@ -2421,7 +2437,7 @@ if st.session_state.menu_option == '__home__':
                 _df_inad = processar_inadimplencia(_df_inad)
                 _val_inad = _df_inad['ValorLiquido'].sum()
                 _cli_inad = _df_inad['Cliente'].nunique()
-                _info_inad = f"R$ {_val_inad:,.0f} · {_cli_inad:,} clientes"
+                _info_inad = f"R$ {formatar_numero_br(_val_inad, 0)} · {formatar_numero_br(_cli_inad, 0)} clientes"
             else:
                 _info_inad = "Dados não disponíveis"
         else:
@@ -2433,7 +2449,7 @@ if st.session_state.menu_option == '__home__':
     try:
         _ultima_compra = df[df['TipoMov']=='NF Venda'].groupby('CPF_CNPJ')['DataEmissao'].max()
         _sem_6m = (_ultima_compra < _6m).sum()
-        _info_churn = f"{_sem_6m:,} clientes sem compra há +6 meses"
+        _info_churn = f"{formatar_numero_br(_sem_6m, 0)} clientes sem compra há +6 meses"
     except Exception:
         _info_churn = "Clientes inativos"
 
@@ -2469,7 +2485,7 @@ if st.session_state.menu_option == '__home__':
                                 _val_pend+=_qp*_vu
                                 if hasattr(_cur_cli,'__len__'): _cli_pend.add(_cur_cli)
                             except Exception: pass
-            _info_pend = f"R$ {_val_pend:,.0f} · {len(_cli_pend):,} clientes"
+            _info_pend = f"R$ {formatar_numero_br(_val_pend, 0)} · {formatar_numero_br(len(_cli_pend), 0)} clientes"
         else:
             _info_pend = "Aguardando faturamento"
     except Exception:
@@ -2484,13 +2500,13 @@ if st.session_state.menu_option == '__home__':
             (notas_unicas['DataEmissao'].dt.year == _ano)
         ]
         _rank = vendas_mes_atual.groupby('Vendedor')['TotalProduto'].sum().nlargest(3)
-        _info_rank = " · ".join([f"{v.split()[0]} R${r:,.0f}" for v,r in _rank.items()])
+        _info_rank = " · ".join([f"{v.split()[0]} R${formatar_numero_br(r, 0)}" for v,r in _rank.items()])
     except Exception:
         _info_rank = "Top vendedores e clientes"
 
     cards_data = [
         # 💰 GESTÃO COMERCIAL
-        {'nome':'Dashboard',                'info':f'R$ {vendas_mes:,.0f} no mês atual{_info_dash_ano_ant}', 'cat':'💰 Gestão Comercial'},
+        {'nome':'Dashboard',                'info':f'R$ {formatar_numero_br(vendas_mes, 0)} no mês atual{_info_dash_ano_ant}', 'cat':'💰 Gestão Comercial'},
         {'nome':'Performance de Vendedores','info':'Análise completa por vendedor',              'cat':'💰 Gestão Comercial'},
         {'nome':'Positivação',              'info':_info_posit,                                  'cat':'💰 Gestão Comercial'},
         {'nome':'Clientes sem Compra',      'info':_info_churn,                                  'cat':'💰 Gestão Comercial'},
@@ -2612,11 +2628,8 @@ _ALIAS_DISPLAY = {
 _menu_display = _ALIAS_DISPLAY.get(menu, menu)
 
 # Módulos especiais que não precisam de verificação de permissão
-_MENU_ESPECIAIS = {
-    "__novo_pedido__", "__historico_cliente__", "Consulta Clientes", "Rankings",
-    "__erp_novo_pedido__", "__erp_meus_pedidos__",
-    "__erp_fila_aprovacao__", "__erp_todos_pedidos__",
-}
+_MENU_ESPECIAIS = {"__novo_pedido__", "__historico_cliente__", "Consulta Clientes", "Rankings"}
+
 st.markdown(f"""
 <div style="font-size:0.74rem;color:#ADB5BD;margin-bottom:14px;
             padding-bottom:10px;border-bottom:1px solid #F0F2F5;">
@@ -2688,27 +2701,38 @@ if menu not in modulos_permitidos and menu not in _MENU_ESPECIAIS:
     st.stop()
 # ====================== DASHBOARD ======================
 elif menu == "Dashboard":
+    # Filtro local de período (não afeta os demais módulos)
+    _dash_ini, _dash_fim = renderizar_filtros_locais("dash", "📅 Ajustar Período")
+    _dash_notas = notas_unicas.copy()
+    _dash_df_filtrado = df_filtrado.copy()
+    if _dash_ini:
+        _dash_notas = _dash_notas[_dash_notas['DataEmissao'] >= pd.to_datetime(_dash_ini)]
+        _dash_df_filtrado = _dash_df_filtrado[_dash_df_filtrado['DataEmissao'] >= pd.to_datetime(_dash_ini)]
+    if _dash_fim:
+        _dash_notas = _dash_notas[_dash_notas['DataEmissao'] <= pd.to_datetime(_dash_fim)]
+        _dash_df_filtrado = _dash_df_filtrado[_dash_df_filtrado['DataEmissao'] <= pd.to_datetime(_dash_fim)]
+
     # KPIs principais com cards customizados
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        vendas_brutas = notas_unicas[notas_unicas['TipoMov'] == 'NF Venda']['TotalProduto'].sum()
-        render_kpi_card("Faturamento Bruto", f"R$ {vendas_brutas:,.0f}", icon="💰", color="#1F4788")
+        vendas_brutas = _dash_notas[_dash_notas['TipoMov'] == 'NF Venda']['TotalProduto'].sum()
+        render_kpi_card("Faturamento Bruto", f"R$ {formatar_numero_br(vendas_brutas, 0)}", icon="💰", color="#1F4788")
     
     with col2:
         faturamento_liquido = (
-            notas_unicas[notas_unicas['TipoMov'] == 'NF Venda']['TotalProduto'].sum() -
-            notas_unicas[notas_unicas['TipoMov'] == 'NF Dev.Venda']['TotalProduto'].sum()
+            _dash_notas[_dash_notas['TipoMov'] == 'NF Venda']['TotalProduto'].sum() -
+            _dash_notas[_dash_notas['TipoMov'] == 'NF Dev.Venda']['TotalProduto'].sum()
         )
-        render_kpi_card("Faturamento Líquido", f"R$ {faturamento_liquido:,.0f}", icon="💵", color="#10B981")
+        render_kpi_card("Faturamento Líquido", f"R$ {formatar_numero_br(faturamento_liquido, 0)}", icon="💵", color="#10B981")
     
     with col3:
-        clientes_unicos = df_filtrado['CPF_CNPJ'].nunique()
-        render_kpi_card("Clientes Únicos", f"{clientes_unicos:,}", icon="👥", color="#F59E0B")
+        clientes_unicos = _dash_df_filtrado['CPF_CNPJ'].nunique()
+        render_kpi_card("Clientes Únicos", f"{formatar_numero_br(clientes_unicos, 0)}", icon="👥", color="#F59E0B")
     
     with col4:
-        total_notas = len(notas_unicas[notas_unicas['TipoMov'] == 'NF Venda'])
-        render_kpi_card("Notas de Venda", f"{total_notas:,}", icon="📄", color="#EF4444")
+        total_notas = len(_dash_notas[_dash_notas['TipoMov'] == 'NF Venda'])
+        render_kpi_card("Notas de Venda", f"{formatar_numero_br(total_notas, 0)}", icon="📄", color="#EF4444")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -2716,16 +2740,16 @@ elif menu == "Dashboard":
     col1b, col2b, col3b, col4b = st.columns(4)
     
     with col1b:
-        total_devolucoes = notas_unicas[notas_unicas['TipoMov'] == 'NF Dev.Venda']['TotalProduto'].sum()
-        render_kpi_card("Devoluções", f"R$ {total_devolucoes:,.0f}", icon="↩️", color="#E5E7EB")
+        total_devolucoes = _dash_notas[_dash_notas['TipoMov'] == 'NF Dev.Venda']['TotalProduto'].sum()
+        render_kpi_card("Devoluções", f"R$ {formatar_numero_br(total_devolucoes, 0)}", icon="↩️", color="#E5E7EB")
     
     with col2b:
         ticket_medio = vendas_brutas / clientes_unicos if clientes_unicos > 0 else 0
-        render_kpi_card("Ticket Médio", f"R$ {ticket_medio:,.0f}", icon="🎯", color="#E5E7EB")
+        render_kpi_card("Ticket Médio", f"R$ {formatar_numero_br(ticket_medio, 0)}", icon="🎯", color="#E5E7EB")
     
     with col3b:
-        qtd_notas_dev = len(notas_unicas[notas_unicas['TipoMov'] == 'NF Dev.Venda'])
-        render_kpi_card("Notas Devolução", f"{qtd_notas_dev:,}", icon="📋", color="#E5E7EB")
+        qtd_notas_dev = len(_dash_notas[_dash_notas['TipoMov'] == 'NF Dev.Venda'])
+        render_kpi_card("Notas Devolução", f"{formatar_numero_br(qtd_notas_dev, 0)}", icon="📋", color="#E5E7EB")
     
     with col4b:
         taxa_devolucao = (total_devolucoes / vendas_brutas * 100) if vendas_brutas > 0 else 0
@@ -2738,7 +2762,7 @@ elif menu == "Dashboard":
 
     with col5:
         st.subheader("📈 Evolução de Vendas")
-        vendas_tempo = notas_unicas[notas_unicas['TipoMov'] == 'NF Venda'].groupby('MesAno')['TotalProduto'].sum().reset_index().sort_values('MesAno')
+        vendas_tempo = _dash_notas[_dash_notas['TipoMov'] == 'NF Venda'].groupby('MesAno')['TotalProduto'].sum().reset_index().sort_values('MesAno')
         if len(vendas_tempo) > 0:
             fig_linha = px.line(vendas_tempo, x='MesAno', y='TotalProduto',
                 labels={'MesAno': 'Período', 'TotalProduto': 'Valor (R$)'})
@@ -2751,7 +2775,7 @@ elif menu == "Dashboard":
 
     with col6:
         st.subheader("🗺️ Top 10 Estados")
-        vendas_estado = notas_unicas[notas_unicas['TipoMov'] == 'NF Venda'].groupby('Estado')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
+        vendas_estado = _dash_notas[_dash_notas['TipoMov'] == 'NF Venda'].groupby('Estado')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
         fig_bar = px.bar(vendas_estado, x='Estado', y='TotalProduto',
             labels={'Estado': 'Estado', 'TotalProduto': 'Valor (R$)'},
             color_discrete_sequence=['#2E86AB'])
@@ -2760,7 +2784,7 @@ elif menu == "Dashboard":
 
     with col7:
         st.subheader("👥 Positivação por Vendedor")
-        atendidos = df_filtrado[df_filtrado['TipoMov'] == 'NF Venda'].groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
+        atendidos = _dash_df_filtrado[_dash_df_filtrado['TipoMov'] == 'NF Venda'].groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
         atendidos.columns = ['Vendedor', 'Clientes']
         atendidos = atendidos.sort_values('Clientes', ascending=False).head(10)
         fig_posit = px.bar(atendidos, x='Vendedor', y='Clientes',
@@ -2776,7 +2800,7 @@ elif menu == "Dashboard":
 
     with col8:
         st.subheader("🏆 Top 10 Clientes")
-        ranking_clientes = notas_unicas[notas_unicas['TipoMov'] == 'NF Venda'].groupby('RazaoSocial')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
+        ranking_clientes = _dash_notas[_dash_notas['TipoMov'] == 'NF Venda'].groupby('RazaoSocial')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
         fig_clientes = px.bar(ranking_clientes, x='TotalProduto', y='RazaoSocial', orientation='h',
             labels={'RazaoSocial': 'Cliente', 'TotalProduto': 'Valor (R$)'},
             color_discrete_sequence=['#4A7BC8'])
@@ -2785,7 +2809,7 @@ elif menu == "Dashboard":
 
     with col9:
         st.subheader("⚠️ Clientes sem Compra")
-        _com_venda = set(df_filtrado[df_filtrado['TipoMov'] == 'NF Venda']['CPF_CNPJ'].unique())
+        _com_venda = set(_dash_df_filtrado[_dash_df_filtrado['TipoMov'] == 'NF Venda']['CPF_CNPJ'].unique())
         _todos = df.sort_values('DataEmissao').groupby('CPF_CNPJ').last().reset_index()
         _vhist = df[df['TipoMov'] == 'NF Venda'].groupby('CPF_CNPJ')['TotalProduto'].sum().reset_index()
         _vhist.columns = ['CPF_CNPJ', 'ValorHistorico']
@@ -2799,159 +2823,411 @@ elif menu == "Dashboard":
 
     with col10:
         st.subheader("📊 Ranking de Vendedores")
-        ranking_vendedores = notas_unicas[notas_unicas['TipoMov'] == 'NF Venda'].groupby('Vendedor')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
+        ranking_vendedores = _dash_notas[_dash_notas['TipoMov'] == 'NF Venda'].groupby('Vendedor')['TotalProduto'].sum().reset_index().sort_values('TotalProduto', ascending=False).head(10)
         fig_rank_vend = px.bar(ranking_vendedores, x='TotalProduto', y='Vendedor', orientation='h',
             labels={'Vendedor': 'Vendedor', 'TotalProduto': 'Valor Total (R$)'},
             color_discrete_sequence=['#163561'])
         fig_rank_vend = aplicar_layout_grafico(fig_rank_vend)
         st.plotly_chart(fig_rank_vend, use_container_width=True)
 
-# ====================== MÓDULO: POSITIVAÇÃO ======================
-elif modulo == "Positivação":
-    st.markdown("<h1>📊 Positivação</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='page-subtitle'>Análise de positivação de clientes e faturamento detalhado por produto</p>", unsafe_allow_html=True)
+# ====================== POSITIVAÇÃO ======================
+elif menu == "Positivação":
+    st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Relatório de Positivação</h2>', unsafe_allow_html=True)
+
+    # ── KPIs do mês vigente no topo ───────────────────────────────────────
+    _mes_atual = pd.Timestamp.now().month
+    _ano_atual = pd.Timestamp.now().year
+    _vendas_mes = df_filtrado[
+        (df_filtrado['TipoMov'] == 'NF Venda') &
+        (df_filtrado['DataEmissao'].dt.month == _mes_atual) &
+        (df_filtrado['DataEmissao'].dt.year == _ano_atual)
+    ]
+    _posit_mes    = _vendas_mes['CPF_CNPJ'].nunique()
+    _total_base   = df['CPF_CNPJ'].nunique()
+    _perc_posit   = (_posit_mes / _total_base * 100) if _total_base > 0 else 0
+
+    _kp1, _kp2, _kp3 = st.columns(3)
+    with _kp1:
+        st.metric("Positivados no Mês", f"{formatar_numero_br(_posit_mes, 0)} clientes",
+                  help="Clientes com ao menos uma compra no mês vigente")
+    with _kp2:
+        st.metric("Total da Base", f"{formatar_numero_br(_total_base, 0)} clientes",
+                  help="Total de clientes únicos na base")
+    with _kp3:
+        st.metric("% da Base Positivada", f"{_perc_posit:.1f}%",
+                  help="Percentual da base que comprou no mês vigente")
+
+    st.markdown("---")
+
+    tab1, tab2, tab3_fat, tab4_prod = st.tabs(["📊 Por Vendedor", "🗺️ Por Estado", "🧾 Pedidos Faturados", "📦 Faturamento por Produto"])
     
-    # Carga centralizada utilizando a base padrão CONSULTA_VENDEDORES.xlsx
-    planilhas = listar_planilhas_github()
-    if not planilhas.get('vendas'):
-        st.error("❌ Base CONSULTA_VENDEDORES.xlsx não encontrada no repositório.")
-        st.stop()
+    with tab1:
+        base_vendedor = df.groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
+        base_vendedor.columns = ['Vendedor', 'TotalBase']
         
-    df_vendas_raw = carregar_planilha_github(planilhas['vendas']['url'])
-    if df_vendas_raw is None or df_vendas_raw.empty:
-        st.error("❌ Erro ao carregar a base de vendas CONSULTA_VENDEDORES.xlsx.")
-        st.stop()
+        vendas_periodo = df_filtrado[df_filtrado['TipoMov'] == 'NF Venda']
+        atendidos = vendas_periodo.groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
+        atendidos.columns = ['Vendedor', 'QtdAtendidos']
         
-    # Aplicação das regras de negócio globais do sistema
-    df_vendas = processar_dados(df_vendas_raw)
-    
-    tab_positivacao, tab_faturamento_prod = st.tabs([
-        "👥 Positivação de Clientes", 
-        "📦 Faturamento por Produto"
-    ])
-    
-    # ------------------------------------------------------------------
-    # ABA 1: POSITIVAÇÃO DE CLIENTES (Mantida sem alterações)
-    # ------------------------------------------------------------------
-    with tab_positivacao:
-        st.subheader("👥 Positivação de Clientes")
-        # [Código existente da aba Positivação mantido integralmente]
+        valor_vendedor = obter_notas_unicas(vendas_periodo).groupby('Vendedor')['Valor_Real'].sum().reset_index()
+        valor_vendedor.columns = ['Vendedor', 'ValorTotal']
         
-    # ------------------------------------------------------------------
-    # ABA 2: FATURAMENTO POR PRODUTO (Refatorada para CONSULTA_VENDEDORES)
-    # ------------------------------------------------------------------
-    with tab_faturamento_prod:
-        st.subheader("📦 Faturamento por Produto")
+        relatorio_positivacao = pd.merge(base_vendedor, atendidos, on='Vendedor', how='left')
+        relatorio_positivacao = pd.merge(relatorio_positivacao, valor_vendedor, on='Vendedor', how='left')
+        relatorio_positivacao['QtdAtendidos'] = relatorio_positivacao['QtdAtendidos'].fillna(0).astype(int)
+        relatorio_positivacao['ValorTotal'] = relatorio_positivacao['ValorTotal'].fillna(0)
+        relatorio_positivacao['Percentual'] = (relatorio_positivacao['QtdAtendidos'] / relatorio_positivacao['TotalBase'] * 100).round(1)
+        relatorio_positivacao = relatorio_positivacao.sort_values('QtdAtendidos', ascending=False)
         
-        # Filtros de Tela
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        fig_posit_vend = px.bar(
+            relatorio_positivacao.head(15),
+            x='Vendedor',
+            y='Percentual',
+            labels={'Vendedor': 'Vendedor', 'Percentual': 'Positivação (%)'},
+            color='Percentual',
+            color_discrete_sequence=['#1F4788'],
+            title='Top 15 Vendedores - Taxa de Positivação'
+        )
+        fig_posit_vend = aplicar_layout_grafico(fig_posit_vend)
+        st.plotly_chart(fig_posit_vend, use_container_width=True)
         
-        min_date = df_vendas['DataEmissao'].min() if not df_vendas['DataEmissao'].isna().all() else datetime.now()
-        max_date = df_vendas['DataEmissao'].max() if not df_vendas['DataEmissao'].isna().all() else datetime.now()
+        # Formatar para exibição
+        relatorio_positivacao_display = formatar_dataframe_moeda(relatorio_positivacao, ['ValorTotal'])
+        st.dataframe(relatorio_positivacao_display, use_container_width=True)
         
-        with col_f1:
-            dt_inicio = st.date_input("Data Inicial", min_date, key="fat_prod_dt_ini")
-            dt_fim = st.date_input("Data Final", max_date, key="fat_prod_dt_fim")
-            
-        with col_f2:
-            vendedores = ["Todos"] + sorted([str(v) for v in df_vendas['Vendedor'].dropna().unique()])
-            vendedor_sel = st.selectbox("Vendedor", vendedores, key="fat_prod_vendedor")
-            
-        with col_f3:
-            col_cliente = 'RazaoSocial' if 'RazaoSocial' in df_vendas.columns else 'Cliente'
-            clientes = ["Todos"] + sorted([str(c) for c in df_vendas[col_cliente].dropna().unique()]) if col_cliente in df_vendas.columns else ["Todos"]
-            cliente_sel = st.selectbox("Cliente", clientes, key="fat_prod_cliente")
-            
-        with col_f4:
-            codigo_prod = st.text_input("Código do Produto", key="fat_prod_codigo")
-            nome_prod = st.text_input("Nome do Produto", key="fat_prod_nome")
-            
-        # Filtragem encadeada dos dados
-        df_fat = df_vendas.copy()
+        st.download_button(
+            "📥 Exportar Positivação por Vendedor",
+            to_excel(relatorio_positivacao),
+            "positivacao_vendedor.xlsx",
+            "application/vnd.ms-excel",
+            key="dl_posit_vendedor"
+        )
         
-        # 1. Filtro de Período
-        df_fat = df_fat[
-            (df_fat['DataEmissao'] >= pd.to_datetime(dt_inicio)) & 
-            (df_fat['DataEmissao'] <= pd.to_datetime(dt_fim))
-        ]
+        st.markdown("---")
         
-        # 2. Filtro de Vendedor
-        if vendedor_sel != "Todos":
-            df_fat = df_fat[df_fat['Vendedor'] == vendedor_sel]
-            
-        # 3. Filtro de Cliente
-        if cliente_sel != "Todos" and col_cliente in df_fat.columns:
-            df_fat = df_fat[df_fat[col_cliente] == cliente_sel]
-            
-        # 4. Filtro de Código do Produto
-        if codigo_prod.strip():
-            df_fat = df_fat[df_fat['CodigoProduto'].astype(str).str.contains(codigo_prod.strip(), case=False, na=False)]
-            
-        # 5. Filtro de Nome do Produto
-        if nome_prod.strip():
-            df_fat = df_fat[df_fat['NomeProduto'].astype(str).str.contains(nome_prod.strip(), case=False, na=False)]
-            
-        # Considerar estritamente registros de Venda
-        df_vendas_prod = df_fat[df_fat['TipoMov'] == 'NF Venda'].copy()
+        st.subheader("📋 Detalhamento de Clientes")
+        vendedor_selecionado = st.selectbox(
+            "Selecione o vendedor",
+            relatorio_positivacao['Vendedor'].tolist()
+        )
         
-        if df_vendas_prod.empty:
-            st.info("Nenhum registro de venda encontrado para os filtros selecionados.")
-        else:
-            # Agrupamento por Produto
-            df_agrupado = df_vendas_prod.groupby(['CodigoProduto', 'NomeProduto'], as_index=False).agg(
-                Quantidade_Vendida=('Quantidade', 'sum'),
-                Faturamento=('TotalProduto', 'sum')
-            )
+        if vendedor_selecionado:
+            notas_vendedor = obter_notas_unicas(vendas_periodo[vendas_periodo['Vendedor'] == vendedor_selecionado])
             
-            # Cálculo do Preço Médio por Item
-            df_agrupado['Preco_Medio'] = df_agrupado.apply(
-                lambda r: r['Faturamento'] / r['Quantidade_Vendida'] if r['Quantidade_Vendida'] > 0 else 0,
-                axis=1
-            )
+            clientes_vendedor = notas_vendedor.groupby(['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado']).agg({
+                'Valor_Real': 'sum'
+            }).reset_index()
+            clientes_vendedor.columns = ['CPF/CNPJ', 'Razão Social', 'Cidade', 'Estado', 'Valor Total']
+            clientes_vendedor = clientes_vendedor.sort_values('Valor Total', ascending=False)
             
-            # Ordenação por maior faturamento
-            df_agrupado = df_agrupado.sort_values(by='Faturamento', ascending=False)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Clientes Atendidos", len(clientes_vendedor))
+            with col2:
+                st.metric("Valor Total", f"R$ {formatar_numero_br(clientes_vendedor['Valor Total'].sum(), 2)}")
             
-            # Consolidação dos Indicadores Totais diretamente da base CONSULTA_VENDEDORES
-            total_qtd = df_agrupado['Quantidade_Vendida'].sum()
-            total_fat = df_agrupado['Faturamento'].sum()
-            preco_medio_geral = total_fat / total_qtd if total_qtd > 0 else 0
+            # Formatar para exibição
+            clientes_vendedor_display = formatar_dataframe_moeda(clientes_vendedor, ['Valor Total'])
+            st.dataframe(clientes_vendedor_display, use_container_width=True)
             
-            # Cards de Métricas Principais
-            k1, k2, k3 = st.columns(3)
-            with k1:
-                render_kpi_card("Quantidade Total Vendida", f"{total_qtd:,.0f}".replace(",", "."), icon="📦")
-            with k2:
-                render_kpi_card("Faturamento Total", formatar_moeda(total_fat), icon="💰")
-            with k3:
-                render_kpi_card("Preço Médio Geral", formatar_moeda(preco_medio_geral), icon="🏷️")
-                
-            st.markdown("---")
-            
-            # Formatação de Exibição em Tabela
-            df_exibicao = df_agrupado.copy()
-            df_exibicao = df_exibicao.rename(columns={
-                'CodigoProduto': 'Código Produto',
-                'NomeProduto': 'Nome do Produto',
-                'Quantidade_Vendida': 'Qtd. Vendida',
-                'Faturamento': 'Faturamento (R$)',
-                'Preco_Medio': 'Preço Médio (R$)'
-            })
-            
-            df_exibicao['Faturamento (R$)'] = df_exibicao['Faturamento (R$)'].apply(formatar_moeda)
-            df_exibicao['Preço Médio (R$)'] = df_exibicao['Preço Médio (R$)'].apply(formatar_moeda)
-            df_exibicao['Qtd. Vendida'] = df_exibicao['Qtd. Vendida'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
-            
-            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-            
-            # Exportação dos Dados Filtrados
-            buffer_excel = to_excel(df_agrupado)
             st.download_button(
-                label="📥 Exportar Relatório em Excel",
-                data=buffer_excel,
-                file_name=f"faturamento_por_produto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                f"📥 Exportar Clientes - {vendedor_selecionado}",
+                to_excel(clientes_vendedor),
+                f"clientes_{vendedor_selecionado}.xlsx",
+                "application/vnd.ms-excel",
+                key="dl_posit_cliente_det"
             )
+    
+    with tab2:
+        st.subheader("🗺️ Positivação por Estado")
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            vendedor_estado_filtro = st.selectbox(
+                "Filtrar por Vendedor",
+                ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist()),
+                key="vend_estado"
+            )
+        with col_f2:
+            ano_estado_filtro = st.selectbox(
+                "Filtrar por Ano",
+                ['Todos'] + sorted(df['Ano'].dropna().unique().tolist(), reverse=True),
+                key="ano_estado"
+            )
+        
+        df_estado_filtrado = df_filtrado.copy()
+        if vendedor_estado_filtro != 'Todos':
+            df_estado_filtrado = df_estado_filtrado[df_estado_filtrado['Vendedor'] == vendedor_estado_filtro]
+        if ano_estado_filtro != 'Todos':
+            df_estado_filtrado = df_estado_filtrado[df_estado_filtrado['Ano'] == ano_estado_filtro]
+        
+        base_estado = df.groupby('Estado')['CPF_CNPJ'].nunique().reset_index()
+        base_estado.columns = ['Estado', 'TotalBase']
+        
+        vendas_estado = df_estado_filtrado[df_estado_filtrado['TipoMov'] == 'NF Venda']
+        atendidos_estado = vendas_estado.groupby('Estado')['CPF_CNPJ'].nunique().reset_index()
+        atendidos_estado.columns = ['Estado', 'QtdAtendidos']
+        
+        valor_estado = obter_notas_unicas(vendas_estado).groupby('Estado')['Valor_Real'].sum().reset_index()
+        valor_estado.columns = ['Estado', 'ValorTotal']
+        
+        relatorio_estado = pd.merge(base_estado, atendidos_estado, on='Estado', how='left')
+        relatorio_estado = pd.merge(relatorio_estado, valor_estado, on='Estado', how='left')
+        relatorio_estado['QtdAtendidos'] = relatorio_estado['QtdAtendidos'].fillna(0).astype(int)
+        relatorio_estado['ValorTotal'] = relatorio_estado['ValorTotal'].fillna(0)
+        relatorio_estado['Percentual'] = (relatorio_estado['QtdAtendidos'] / relatorio_estado['TotalBase'] * 100).round(1)
+        relatorio_estado = relatorio_estado.sort_values('Percentual', ascending=False)
+        
+        fig_posit_estado = px.bar(
+            relatorio_estado.head(15),
+            x='Estado',
+            y='Percentual',
+            labels={'Estado': 'Estado', 'Percentual': 'Positivação (%)'},
+            color='Percentual',
+            color_discrete_sequence=['#2E86AB'],
+            title='Top 15 Estados - Taxa de Positivação'
+        )
+        fig_posit_estado = aplicar_layout_grafico(fig_posit_estado)
+        st.plotly_chart(fig_posit_estado, use_container_width=True)
+        
+        # Formatar para exibição
+        relatorio_estado_display = formatar_dataframe_moeda(relatorio_estado, ['ValorTotal'])
+        st.dataframe(relatorio_estado_display, use_container_width=True)
+        
+        st.download_button(
+            "📥 Exportar Positivação por Estado",
+            to_excel(relatorio_estado),
+            "positivacao_estado.xlsx",
+            "application/vnd.ms-excel",
+            key="dl_posit_estado"
+        )
+
+    with tab3_fat:
+        st.subheader("🧾 Relatório de Pedidos Faturados")
+
+        # ── Filtros locais ──
+        _fc1, _fc2, _fc3 = st.columns(3)
+        with _fc1:
+            _fat_vendedores = ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist())
+            _fat_vend = st.selectbox("👤 Vendedor", _fat_vendedores, key="fat_vend")
+        with _fc2:
+            _fat_regioes = ['Todos'] + sorted(df['Estado'].dropna().unique().tolist())
+            _fat_reg = st.selectbox("🗺️ Estado/Região", _fat_regioes, key="fat_reg")
+        with _fc3:
+            _fat_col1, _fat_col2 = st.columns(2)
+            with _fat_col1:
+                _fat_di = st.date_input("📅 De", value=None, key="fat_di", format="DD/MM/YYYY")
+            with _fat_col2:
+                _fat_df = st.date_input("📅 Até", value=None, key="fat_df", format="DD/MM/YYYY")
+
+        # ── Aplicar filtros ──
+        _df_fat = df[df['TipoMov'] == 'NF Venda'].copy()
+        if _fat_vend != 'Todos':
+            _df_fat = _df_fat[_df_fat['Vendedor'] == _fat_vend]
+        if _fat_reg != 'Todos':
+            _df_fat = _df_fat[_df_fat['Estado'] == _fat_reg]
+        if _fat_di:
+            _df_fat = _df_fat[_df_fat['DataEmissao'] >= pd.to_datetime(_fat_di)]
+        if _fat_df:
+            _df_fat = _df_fat[_df_fat['DataEmissao'] <= pd.to_datetime(_fat_df)]
+
+        if len(_df_fat) == 0:
+            st.info("Nenhum registro encontrado com os filtros selecionados.")
+        else:
+            # ── KPIs ──
+            _fk1, _fk2, _fk3 = st.columns(3)
+            with _fk1:
+                st.metric("Total Faturado", f"R$ {formatar_numero_br(_df_fat['TotalProduto'].sum(), 2)}")
+            with _fk2:
+                st.metric("Notas Fiscais", obter_notas_unicas(_df_fat)['Numero_NF'].nunique())
+            with _fk3:
+                st.metric("Clientes", _df_fat['CPF_CNPJ'].nunique())
+
+            # ── Colunas para exibição/exportação ──
+            _cols_base = ['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado', 'Vendedor',
+                          'DataEmissao', 'Numero_NF', 'TipoMov',
+                          'CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit',
+                          'TotalProduto', 'Valor_Real']
+            _cols_disp = [c for c in _cols_base if c in _df_fat.columns]
+            _df_fat_disp = _df_fat[_cols_disp].copy()
+            _df_fat_disp['DataEmissao'] = _df_fat_disp['DataEmissao'].dt.strftime('%d/%m/%Y')
+            st.dataframe(_df_fat_disp, use_container_width=True, height=400)
+
+            # ── Exportar Excel com duas abas como tabela ──
+            def _gerar_excel_faturado(df_src, nome_vend):
+                import io
+                _cols = [c for c in ['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado', 'Vendedor',
+                                     'DataEmissao', 'Numero_NF', 'TipoMov',
+                                     'CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit',
+                                     'TotalProduto', 'Valor_Real'] if c in df_src.columns]
+                _df_exp = df_src[_cols].copy()
+                _df_exp['DataEmissao'] = _df_exp['DataEmissao'].dt.strftime('%d/%m/%Y')
+
+                # Aba FATURAMENTO TOTAL: dedup por Numero_NF + soma TotalProduto
+                _cols_ocultas = ['CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit', 'TotalProduto', 'Valor_Real']
+                _cols_fat_total = [c for c in _cols if c not in _cols_ocultas]
+                _df_fat_total = (
+                    df_src.drop_duplicates(subset=['Numero_NF'], keep='first')
+                    [_cols_fat_total + ['TotalProduto']]
+                    .copy()
+                )
+                _df_fat_total['DataEmissao'] = _df_fat_total['DataEmissao'].dt.strftime('%d/%m/%Y')
+                _soma = _df_fat_total['TotalProduto'].sum()
+                _linha_total = {c: '' for c in _df_fat_total.columns}
+                _linha_total['TotalProduto'] = _soma
+                _linha_total['RazaoSocial'] = 'TOTAL'
+                _df_fat_total = pd.concat([_df_fat_total, pd.DataFrame([_linha_total])], ignore_index=True)
+
+                import io
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    wb = writer.book
+
+                    # ── Aba 1: PRODUTOS POR CLIENTE ──
+                    _df_exp.to_excel(writer, index=False, sheet_name='PRODUTOS POR CLIENTE')
+                    ws1 = writer.sheets['PRODUTOS POR CLIENTE']
+                    if len(_df_exp) > 0:
+                        ws1.add_table(0, 0, len(_df_exp), len(_df_exp.columns) - 1, {
+                            'name': 'TblProdutosCliente',
+                            'style': 'Table Style Medium 2',
+                            'columns': [{'header': c} for c in _df_exp.columns]
+                        })
+
+                    # ── Aba 2: FATURAMENTO TOTAL ──
+                    _df_fat_total.to_excel(writer, index=False, sheet_name='FATURAMENTO TOTAL')
+                    ws2 = writer.sheets['FATURAMENTO TOTAL']
+                    _nrows_ft = len(_df_fat_total) - 1  # última linha é total, fora da tabela
+                    if _nrows_ft > 0:
+                        ws2.add_table(0, 0, _nrows_ft, len(_df_fat_total.columns) - 1, {
+                            'name': 'TblFaturamentoTotal',
+                            'style': 'Table Style Medium 2',
+                            'columns': [{'header': c} for c in _df_fat_total.columns]
+                        })
+                    # Linha de soma logo após a tabela
+                    _fmt_bold = wb.add_format({'bold': True, 'num_format': '#,##0.00'})
+                    _soma_row = _nrows_ft + 1
+                    _soma_col = list(_df_fat_total.columns).index('TotalProduto')
+                    ws2.write(_soma_row, _soma_col, _soma, _fmt_bold)
+
+                return output.getvalue()
+
+            _nome_arquivo_fat = f"{_fat_vend.upper().replace(' ', '_')}.xlsx" if _fat_vend != 'Todos' else "FATURADO_GERAL.xlsx"
+
+            st.download_button(
+                "📥 Exportar Pedidos Faturados",
+                _gerar_excel_faturado(_df_fat, _fat_vend),
+                _nome_arquivo_fat,
+                "application/vnd.ms-excel",
+                key="download_fat"
+            )
+
+    with tab4_prod:
+        st.subheader("📦 Faturamento por Produto no Período")
+
+        # Filtros de período — value=None para não pré-selecionar data
+        _fp_col_d1, _fp_col_d2 = st.columns(2)
+        with _fp_col_d1:
+            _fp_dt_ini = st.date_input("Data inicial", value=None, key="fp_dt_ini_posit")
+        with _fp_col_d2:
+            _fp_dt_fim = st.date_input("Data final",   value=None, key="fp_dt_fim_posit")
+
+        # Filtros de produto e vendedor
+        _col_fp1, _col_fp2, _col_fp3, _col_fp4 = st.columns(4)
+        with _col_fp1:
+            _fp_vend = st.selectbox(
+                "Vendedor", ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist()),
+                key="fp_vend_posit"
+            )
+        with _col_fp2:
+            _fp_cod = st.text_input("🔍 Código", placeholder="Ex: 85", key="fp_cod_posit")
+        with _col_fp3:
+            _fp_busca = st.text_input("🔍 Produto", placeholder="Ex: Atadura", key="fp_busca_posit")
+        with _col_fp4:
+            _fp_ordem = st.selectbox("Ordenar por",
+                ["Faturamento (Maior)", "Quantidade (Maior)", "Nome (A-Z)"],
+                key="fp_ordem_posit")
+
+        # Base: apenas NF Venda — NF Dev.Venda excluída
+        _prod_fat = df[df['TipoMov'] == 'NF Venda'].copy()
+        _prod_fat['DataEmissao'] = pd.to_datetime(_prod_fat['DataEmissao'], errors='coerce').dt.normalize()
+
+        # Aplicar filtros de data
+        if _fp_dt_ini:
+            _prod_fat = _prod_fat[_prod_fat['DataEmissao'] >= pd.Timestamp(_fp_dt_ini)]
+        if _fp_dt_fim:
+            _prod_fat = _prod_fat[_prod_fat['DataEmissao'] <= pd.Timestamp(_fp_dt_fim)]
+        if _fp_vend != 'Todos':
+            _prod_fat = _prod_fat[_prod_fat['Vendedor'] == _fp_vend]
+        if _fp_cod:
+            _prod_fat = _prod_fat[_prod_fat['CodigoProduto'].astype(str).str.strip() == str(_fp_cod).strip()]
+        if _fp_busca and len(_fp_busca) >= 2:
+            _prod_fat = _prod_fat[_prod_fat['NomeProduto'].str.contains(_fp_busca, case=False, na=False)]
+
+        if len(_prod_fat) == 0:
+            st.info("ℹ️ Nenhum produto encontrado. Ajuste os filtros acima.")
+        else:
+            # Valor correto para este módulo: soma da coluna PrecoQtdXItem da planilha CONSULTA_VENDEDORES
+            _val_col = 'PrecoQtdXItem' if 'PrecoQtdXItem' in _prod_fat.columns else 'TotalProduto'
+            _prod_agrup = _prod_fat.groupby(['CodigoProduto', 'NomeProduto']).agg(
+                Quantidade=('Quantidade', 'sum'),
+                TotalProduto=(_val_col, 'sum')
+            ).reset_index()
+
+            if _fp_ordem == "Faturamento (Maior)":
+                _prod_agrup = _prod_agrup.sort_values('TotalProduto', ascending=False)
+            elif _fp_ordem == "Quantidade (Maior)":
+                _prod_agrup = _prod_agrup.sort_values('Quantidade', ascending=False)
+            else:
+                _prod_agrup = _prod_agrup.sort_values('NomeProduto')
+
+            # Adicionar Gramatura via lookup da planilha de produtos
+            if planilhas_disponiveis.get('produtos_agrupados'):
+                try:
+                    _fp_gram_df = carregar_planilha_github(planilhas_disponiveis['produtos_agrupados']['url'])
+                    if _fp_gram_df is not None:
+                        _fp_gram_df.columns = _fp_gram_df.columns.str.upper().str.strip()
+                        _fp_kc = next((c for c in _fp_gram_df.columns if any(x in c for x in ['ID_COD','CODIGO','COD'])), None)
+                        _fp_gc = next((c for c in _fp_gram_df.columns if 'GRAMATUR' in c), None)
+                        if _fp_kc and _fp_gc:
+                            def _fp_norm(v):
+                                try: return str(int(float(str(v).strip())))
+                                except Exception: return str(v).strip()
+                            _fp_gram_df['_K'] = _fp_gram_df[_fp_kc].apply(_fp_norm)
+                            _fp_gmap = _fp_gram_df.drop_duplicates(subset='_K').set_index('_K')[_fp_gc]
+                            _prod_agrup['Gramatura'] = _prod_agrup['CodigoProduto'].apply(_fp_norm).map(_fp_gmap).fillna('')
+                except Exception:
+                    _prod_agrup['Gramatura'] = ''
+
+            _col_fp_m1, _col_fp_m2, _col_fp_m3 = st.columns(3)
+            with _col_fp_m1:
+                st.metric("Total Produtos", len(_prod_agrup))
+            with _col_fp_m2:
+                st.metric("Faturamento Total", f"R$ {formatar_numero_br(_prod_agrup['TotalProduto'].sum(), 2)}")
+            with _col_fp_m3:
+                st.metric("Qtd Total", f"{formatar_numero_br(_prod_agrup['Quantidade'].sum(), 0)}")
+
+            _prod_display = _prod_agrup.copy()
+            _prod_display['TotalProduto'] = _prod_display['TotalProduto'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+            _prod_display['Quantidade']   = _prod_display['Quantidade'].apply(lambda x: f"{formatar_numero_br(x, 0)}")
+            _col_order = ['CodigoProduto', 'NomeProduto']
+            if 'Gramatura' in _prod_display.columns:
+                _col_order.append('Gramatura')
+            _col_order += ['Quantidade', 'TotalProduto']
+            _prod_display = _prod_display[_col_order].rename(columns={
+                'CodigoProduto': 'Código', 'NomeProduto': 'Produto',
+                'Gramatura': 'Gramatura', 'Quantidade': 'Qtd',
+                'TotalProduto': 'Faturamento'
+            })
+            st.dataframe(_prod_display, use_container_width=True, height=420, hide_index=True)
+
+            st.download_button(
+                "📥 Exportar Faturamento por Produto",
+                to_excel(_prod_agrup),
+                "faturamento_por_produto.xlsx",
+                "application/vnd.ms-excel",
+                key="dl_fat_produto_posit"
+            )
+
 # ====================== INADIMPLÊNCIA ======================
 elif menu == "Inadimplência":
     st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Relatório de Inadimplência</h2>', unsafe_allow_html=True)
@@ -3005,15 +3281,15 @@ elif menu == "Inadimplência":
         
         with col1:
             total_inadimplencia = df_inad_filtrado['ValorLiquido'].sum()
-            st.metric("Total em Aberto", f"R$ {total_inadimplencia:,.2f}")
+            st.metric("Total em Aberto", f"R$ {formatar_numero_br(total_inadimplencia, 2)}")
         
         with col2:
             qtd_titulos = len(df_inad_filtrado)
-            st.metric("Qtd. Títulos", f"{qtd_titulos:,}")
+            st.metric("Qtd. Títulos", f"{formatar_numero_br(qtd_titulos, 0)}")
         
         with col3:
             clientes_inadimplentes = df_inad_filtrado['Cliente'].nunique()
-            st.metric("Clientes Inadimplentes", f"{clientes_inadimplentes:,}")
+            st.metric("Clientes Inadimplentes", f"{formatar_numero_br(clientes_inadimplentes, 0)}")
         
         with col4:
             atraso_medio = df_inad_filtrado['DiasAtraso'].mean()
@@ -3334,10 +3610,10 @@ elif menu == "Clientes sem Compra":
     with col1:
         st.metric("Total de Clientes sem Compra", len(clientes_sem_compra))
     with col2:
-        st.metric("Valor Potencial Perdido", f"R$ {clientes_sem_compra['ValorHistorico'].sum():,.2f}")
+        st.metric("Valor Potencial Perdido", f"R$ {formatar_numero_br(clientes_sem_compra['ValorHistorico'].sum(), 2)}")
     with col3:
         ticket_medio_churn = clientes_sem_compra['ValorHistorico'].mean() if len(clientes_sem_compra) > 0 else 0
-        st.metric("Ticket Médio Histórico", f"R$ {ticket_medio_churn:,.2f}")
+        st.metric("Ticket Médio Histórico", f"R$ {formatar_numero_br(ticket_medio_churn, 2)}")
 
     if len(clientes_sem_compra) > 0:
         top_churn = clientes_sem_compra.head(15)
@@ -3468,9 +3744,9 @@ elif menu == "Histórico":
                 
                 col5, col6, col7, col8 = st.columns(4)
                 with col5:
-                    st.metric("Total Vendas", f"R$ {vendas_cliente['TotalProduto'].sum():,.2f}")
+                    st.metric("Total Vendas", f"R$ {formatar_numero_br(vendas_cliente['TotalProduto'].sum(), 2)}")
                 with col6:
-                    st.metric("Total Devoluções", f"R$ {devolucoes_cliente['TotalProduto'].sum():,.2f}")
+                    st.metric("Total Devoluções", f"R$ {formatar_numero_br(devolucoes_cliente['TotalProduto'].sum(), 2)}")
                 with col7:
                     st.metric("Qtd Notas Vendas", len(vendas_cliente['Numero_NF'].unique()))
                 with col8:
@@ -3557,8 +3833,8 @@ elif menu == "Histórico":
                 _col_pdf1, _col_pdf2 = st.columns([2, 1])
                 with _col_pdf1:
                     _vendas_resumo = {
-                        'Total de Vendas':   f"R$ {vendas_cliente['TotalProduto'].sum():,.2f}",
-                        'Total Devoluções':  f"R$ {devolucoes_cliente['TotalProduto'].sum():,.2f}",
+                        'Total de Vendas':   f"R$ {formatar_numero_br(vendas_cliente['TotalProduto'].sum(), 2)}",
+                        'Total Devoluções':  f"R$ {formatar_numero_br(devolucoes_cliente['TotalProduto'].sum(), 2)}",
                         'Notas de Venda':    str(len(vendas_cliente['Numero_NF'].unique())),
                         'Clientes (CNPJ)':   cpf_cnpj,
                     }
@@ -3644,14 +3920,14 @@ elif menu == "Histórico":
             # Métricas resumidas
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Total de Vendas", f"R$ {historico_vendedor['TotalProduto'].sum():,.2f}")
+                st.metric("Total de Vendas", f"R$ {formatar_numero_br(historico_vendedor['TotalProduto'].sum(), 2)}")
             with col2:
                 st.metric("Quantidade de Notas", len(historico_vendedor))
             with col3:
                 st.metric("Clientes Atendidos", historico_vendedor['RazaoSocial'].nunique())
             with col4:
                 ticket_medio_vend = historico_vendedor['TotalProduto'].mean() if len(historico_vendedor) > 0 else 0
-                st.metric("Ticket Médio", f"R$ {ticket_medio_vend:,.2f}")
+                st.metric("Ticket Médio", f"R$ {formatar_numero_br(ticket_medio_vend, 2)}")
             
             st.markdown("---")
             
@@ -3872,10 +4148,10 @@ elif menu == "Histórico":
                 'Produto': [produto_info['descricao'][:50]],
                 'Peso': [produto_info.get('peso', '')],
                 'Cx Embarque': [produto_info.get('cx_embarque', '')],
-                'Qtde': [f"{qtde_item:,.0f}"],
-                'Preço Histórico': [f"R$ {preco_hist_preview:,.2f}"],
-                'Valor Unit.': [f"R$ {valor_item:,.2f}"],
-                'Total': [f"R$ {total_preview:,.2f}"],
+                'Qtde': [f"{formatar_numero_br(qtde_item, 0)}"],
+                'Preço Histórico': [f"R$ {formatar_numero_br(preco_hist_preview, 2)}"],
+                'Valor Unit.': [f"R$ {formatar_numero_br(valor_item, 2)}"],
+                'Total': [f"R$ {formatar_numero_br(total_preview, 2)}"],
                 'Comissão%': [comissao_preview]
             }
             
@@ -3886,11 +4162,11 @@ elif menu == "Histórico":
             if preco_hist_preview > 0:
                 variacao = ((valor_item - preco_hist_preview) / preco_hist_preview) * 100
                 if variacao > 0:
-                    st.info(f"📈 Valor {variacao:.1f}% **acima** do histórico (R$ {preco_hist_preview:,.2f})")
+                    st.info(f"📈 Valor {variacao:.1f}% **acima** do histórico (R$ {formatar_numero_br(preco_hist_preview, 2)})")
                 elif variacao < 0:
-                    st.warning(f"📉 Valor {abs(variacao):.1f}% **abaixo** do histórico (R$ {preco_hist_preview:,.2f})")
+                    st.warning(f"📉 Valor {abs(variacao):.1f}% **abaixo** do histórico (R$ {formatar_numero_br(preco_hist_preview, 2)})")
                 else:
-                    st.success(f"✅ Valor **igual** ao histórico (R$ {preco_hist_preview:,.2f})")
+                    st.success(f"✅ Valor **igual** ao histórico (R$ {formatar_numero_br(preco_hist_preview, 2)})")
             
             st.markdown("---")
         
@@ -3904,9 +4180,9 @@ elif menu == "Histórico":
             
             # Formatar para exibição
             df_itens_display = df_itens.copy()
-            df_itens_display['preco_historico'] = df_itens_display['preco_historico'].apply(lambda x: f"R$ {x:,.2f}")
-            df_itens_display['valor_unit'] = df_itens_display['valor_unit'].apply(lambda x: f"R$ {x:,.2f}")
-            df_itens_display['total'] = df_itens_display['total'].apply(lambda x: f"R$ {x:,.2f}")
+            df_itens_display['preco_historico'] = df_itens_display['preco_historico'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+            df_itens_display['valor_unit'] = df_itens_display['valor_unit'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+            df_itens_display['total'] = df_itens_display['total'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
             
             df_itens_display = df_itens_display.rename(columns={
                 'codigo': 'COD.',
@@ -3927,14 +4203,14 @@ elif menu == "Histórico":
             
             with col_met1:
                 total_itens = df_itens['quantidade'].sum()
-                st.metric("Qtde Total de Itens", f"{total_itens:,.0f}")
+                st.metric("Qtde Total de Itens", f"{formatar_numero_br(total_itens, 0)}")
             
             with col_met2:
                 st.metric("Frete", tipo_frete)
             
             with col_met3:
                 total_pedido = df_itens['total'].sum()
-                st.metric("Total Final", f"R$ {total_pedido:,.2f}")
+                st.metric("Total Final", f"R$ {formatar_numero_br(total_pedido, 2)}")
             
             # Observação final
             obs_pedido = st.text_area("Observação (Pedido)", key="obs_pedido", height=100)
@@ -4043,15 +4319,15 @@ elif menu == "Histórico":
             # ── KPIs ──────────────────────────────────────────────────────
             _m1, _m2, _m3, _m4 = st.columns(4)
             with _m1:
-                st.metric("Total Faturado", f"R$ {_df_tp['TotalProduto'].sum():,.2f}")
+                st.metric("Total Faturado", f"R$ {formatar_numero_br(_df_tp['TotalProduto'].sum(), 2)}")
             with _m2:
-                st.metric("Qtd Vendida", f"{_df_tp['Quantidade'].sum():,.0f}")
+                st.metric("Qtd Vendida", f"{formatar_numero_br(_df_tp['Quantidade'].sum(), 0)}")
             with _m3:
                 _pm = (_df_tp['TotalProduto'].sum() / _df_tp['Quantidade'].sum()
                        if _df_tp['Quantidade'].sum() > 0 else 0)
-                st.metric("Preço Médio", f"R$ {_pm:,.2f}")
+                st.metric("Preço Médio", f"R$ {formatar_numero_br(_pm, 2)}")
             with _m4:
-                st.metric("Produtos Únicos", f"{_df_tp['CodigoProduto'].nunique():,}")
+                st.metric("Produtos Únicos", f"{formatar_numero_br(_df_tp['CodigoProduto'].nunique(), 0)}")
 
             st.markdown("---")
 
@@ -4124,9 +4400,9 @@ elif menu == "Histórico":
                 .reset_index()
                 .sort_values('TotalFaturado', ascending=False)
             )
-            _df_tab['PrecoMedio']    = _df_tab['PrecoMedio'].apply(lambda x: f"R$ {x:,.2f}")
-            _df_tab['TotalFaturado'] = _df_tab['TotalFaturado'].apply(lambda x: f"R$ {x:,.2f}")
-            _df_tab['QtdVendida']    = _df_tab['QtdVendida'].apply(lambda x: f"{x:,.0f}")
+            _df_tab['PrecoMedio']    = _df_tab['PrecoMedio'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+            _df_tab['TotalFaturado'] = _df_tab['TotalFaturado'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+            _df_tab['QtdVendida']    = _df_tab['QtdVendida'].apply(lambda x: f"{formatar_numero_br(x, 0)}")
             _df_tab = _df_tab.rename(columns={
                 'CodigoProduto': 'Código',
                 'NomeProduto':   'Produto',
@@ -4283,18 +4559,18 @@ elif menu == "__novo_pedido__":
             'Produto': produto_info['descricao'][:50],
             'Peso': produto_info.get('peso', ''),
             'Cx Embarque': produto_info.get('cx_embarque', ''),
-            'Qtde': f"{qtde_item:,.0f}",
-            'Preço Histórico': f"R$ {_preco_hist:,.2f}",
-            'Valor Unit.': f"R$ {valor_item:,.2f}",
-            'Total': f"R$ {_total_prev:,.2f}",
+            'Qtde': f"{formatar_numero_br(qtde_item, 0)}",
+            'Preço Histórico': f"R$ {formatar_numero_br(_preco_hist, 2)}",
+            'Valor Unit.': f"R$ {formatar_numero_br(valor_item, 2)}",
+            'Total': f"R$ {formatar_numero_br(_total_prev, 2)}",
             'Comissão%': _comissao_p
         }]), use_container_width=True, hide_index=True)
         if _preco_hist > 0:
             _var = ((valor_item - _preco_hist) / _preco_hist) * 100
             if _var > 0:
-                st.info(f"📈 Valor {_var:.1f}% **acima** do histórico (R$ {_preco_hist:,.2f})")
+                st.info(f"📈 Valor {_var:.1f}% **acima** do histórico (R$ {formatar_numero_br(_preco_hist, 2)})")
             elif _var < 0:
-                st.warning(f"📉 Valor {abs(_var):.1f}% **abaixo** do histórico (R$ {_preco_hist:,.2f})")
+                st.warning(f"📉 Valor {abs(_var):.1f}% **abaixo** do histórico (R$ {formatar_numero_br(_preco_hist, 2)})")
             else:
                 st.success(f"✅ Valor **igual** ao histórico")
         st.markdown("---")
@@ -4305,9 +4581,9 @@ elif menu == "__novo_pedido__":
         st.markdown("### 📦 Itens do Pedido")
         df_itens = pd.DataFrame(st.session_state.itens_pedido)
         df_itens_display = df_itens.copy()
-        df_itens_display['preco_historico'] = df_itens_display['preco_historico'].apply(lambda x: f"R$ {x:,.2f}")
-        df_itens_display['valor_unit']      = df_itens_display['valor_unit'].apply(lambda x: f"R$ {x:,.2f}")
-        df_itens_display['total']           = df_itens_display['total'].apply(lambda x: f"R$ {x:,.2f}")
+        df_itens_display['preco_historico'] = df_itens_display['preco_historico'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+        df_itens_display['valor_unit']      = df_itens_display['valor_unit'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
+        df_itens_display['total']           = df_itens_display['total'].apply(lambda x: f"R$ {formatar_numero_br(x, 2)}")
         df_itens_display = df_itens_display.rename(columns={
             'codigo':'COD.','descricao':'PRODUTO','peso':'PESO',
             'cx_embarque':'CX EMBARQUE','quantidade':'QTDE',
@@ -4317,11 +4593,11 @@ elif menu == "__novo_pedido__":
         st.dataframe(df_itens_display, use_container_width=True, height=300)
         col_met1, col_met2, col_met3 = st.columns(3)
         with col_met1:
-            st.metric("Qtde Total", f"{df_itens['quantidade'].sum():,.0f}")
+            st.metric("Qtde Total", f"{formatar_numero_br(df_itens['quantidade'].sum(), 0)}")
         with col_met2:
             st.metric("Frete", tipo_frete)
         with col_met3:
-            st.metric("Total Final", f"R$ {df_itens['total'].sum():,.2f}")
+            st.metric("Total Final", f"R$ {formatar_numero_br(df_itens['total'].sum(), 2)}")
         obs_pedido = st.text_area("Observação (Pedido)", key="obs_pedido_np", height=100)
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
@@ -4416,7 +4692,8 @@ elif menu == "__historico_cliente__":
             with _hc3:
                 st.metric("Vendedor", cliente_info.get('Vendedor', ''))
             with _hc4:
-                st.metric("Total Comprado", f"R$ {historico_cli[historico_cli['TipoMov']=='NF Venda']['TotalProduto'].sum():,.2f}")
+                _notas_venda_cli = obter_notas_unicas(historico_cli[historico_cli['TipoMov']=='NF Venda'])
+                st.metric("Total Comprado", formatar_moeda(_notas_venda_cli['TotalProduto'].sum()))
 
             st.markdown("---")
             vendas_cli = historico_cli[historico_cli['TipoMov'] == 'NF Venda']
@@ -4435,6 +4712,7 @@ elif menu == "__historico_cliente__":
                 if len(vendas_cli) > 0:
                     _vd = vendas_cli[_colunas_disp].copy()
                     _vd['DataEmissao'] = _vd['DataEmissao'].dt.strftime('%d/%m/%Y')
+                    _vd = formatar_dataframe_moeda(_vd, ['PrecoUnit', 'TotalProduto'])
                     st.dataframe(_vd.sort_values('DataEmissao', ascending=False), use_container_width=True, height=350)
                 else:
                     st.info("Sem vendas registradas")
@@ -4442,6 +4720,7 @@ elif menu == "__historico_cliente__":
                 if len(devolucoes_cli) > 0:
                     _dd = devolucoes_cli[_colunas_disp].copy()
                     _dd['DataEmissao'] = _dd['DataEmissao'].dt.strftime('%d/%m/%Y')
+                    _dd = formatar_dataframe_moeda(_dd, ['PrecoUnit', 'TotalProduto'])
                     st.dataframe(_dd.sort_values('DataEmissao', ascending=False), use_container_width=True, height=350)
                 else:
                     st.info("Sem devoluções registradas")
@@ -4449,187 +4728,6 @@ elif menu == "__historico_cliente__":
             st.warning("Nenhum cliente encontrado com esse critério.")
     else:
         st.info("👆 Digite pelo menos 3 caracteres para buscar um cliente")
-
-# ====================== PREÇO MÉDIO ======================
-# ====================== PREÇO MÉDIO ======================
-elif menu == "Preço Médio":
-    st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Preço Médio por Produto</h2>', unsafe_allow_html=True)
-
-    if not planilhas_disponiveis.get('vendas_produto'):
-        st.error("❌ Planilha de vendas por produto não encontrada")
-        st.stop()
-    if not planilhas_disponiveis.get('produtos_agrupados'):
-        st.error("❌ Planilha de produtos agrupados não encontrada")
-        st.stop()
-
-    with st.spinner("Carregando planilhas..."):
-        _pm_v = carregar_planilha_github(planilhas_disponiveis['vendas_produto']['url'])
-        _pm_p = carregar_planilha_github(planilhas_disponiveis['produtos_agrupados']['url'])
-
-    if _pm_v is None or _pm_p is None:
-        st.error("❌ Erro ao carregar planilhas")
-        st.stop()
-
-    # Padronizar colunas
-    _pm_v.columns = _pm_v.columns.str.upper().str.strip()
-    _pm_p.columns = _pm_p.columns.str.upper().str.strip()
-
-    # Detectar coluna chave na planilha de produtos (ID_COD)
-    _pm_k = next((c for c in _pm_p.columns if c in ('ID_COD','CODPRODUTO','CODPROD','COD','CODIGO')), None)
-    if _pm_k is None:
-        st.error("❌ Coluna de código não encontrada na planilha de produtos")
-        st.stop()
-
-    # Detectar coluna chave na planilha de vendas (CODPROD ou CODPRODUTO)
-    _pm_vk = next((c for c in _pm_v.columns if c in ('CODPROD','CODPRODUTO','COD','CODIGO')), None)
-    if _pm_vk is None:
-        st.error("❌ Coluna de código não encontrada na planilha de vendas")
-        st.stop()
-
-    # Detectar coluna nome na planilha de vendas (NOMEPROD ou NOMEPRODUTO)
-    _pm_vn = next((c for c in _pm_v.columns if c in ('NOMEPRODUTO','NOMEPROD','NOME')), None)
-    if _pm_vn is None:
-        st.error("❌ Coluna de nome não encontrada na planilha de vendas")
-        st.stop()
-
-    # Detectar coluna gramatura na planilha de vendas
-    _pm_vg = next((c for c in _pm_v.columns if 'GRAM' in c.upper()), None)
-
-    # Montar nome do produto = GRUPO + DESCRIÇÃO + LINHA (composição da planilha de produtos)
-    for a, b in [('DESCRICAO','DESCRIÇÃO'),('LINHAS','LINHA'),('GRUPOS','GRUPO')]:
-        if a in _pm_p.columns and b not in _pm_p.columns:
-            _pm_p = _pm_p.rename(columns={a: b})
-    _pm_partes = [c for c in ['GRUPO','DESCRIÇÃO','LINHA'] if c in _pm_p.columns]
-    if _pm_partes:
-        _pm_p['_NOME'] = _pm_p[_pm_partes].fillna('').astype(str).apply(
-            lambda r: ' '.join(x.strip() for x in r if x.strip()), axis=1
-        ).str.strip()
-    else:
-        _pm_p['_NOME'] = _pm_p[_pm_k].astype(str)
-
-    # Detectar GRAMATURA na planilha de produtos
-    _pm_gcol = next((c for c in _pm_p.columns if 'GRAM' in c.upper()), None)
-    _pm_p['_GRAM'] = _pm_p[_pm_gcol].fillna('') if _pm_gcol else ''
-
-    # Lookup por código — sem decimais, sem duplicatas
-    _pm_idx = _pm_p[[_pm_k, '_NOME', '_GRAM']].drop_duplicates(subset=_pm_k).copy()
-    _pm_idx[_pm_k] = _pm_idx[_pm_k].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
-    _pm_map_nome = _pm_idx.set_index(_pm_k)['_NOME']
-    _pm_map_gram = _pm_idx.set_index(_pm_k)['_GRAM']
-
-    # Chave de vendas normalizada para string sem decimais (não altera valores numéricos)
-    _pm_v['_COD_KEY'] = _pm_v[_pm_vk].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
-
-    # Substituir APENAS nome e gramatura — todos os outros valores permanecem intactos
-    _pm_v[_pm_vn] = _pm_v['_COD_KEY'].map(_pm_map_nome).fillna(
-        'Não catalogado (' + _pm_v['_COD_KEY'] + ')'
-    )
-    if _pm_vg:
-        _pm_v[_pm_vg] = _pm_v['_COD_KEY'].map(_pm_map_gram).fillna('')
-    _pm_v = _pm_v.drop(columns=['_COD_KEY'])
-
-    # Selecionar apenas as 6 colunas de saída usando os nomes reais detectados
-    _pm_cols = []
-    for _c in [_pm_vk, _pm_vn, _pm_vg, 'TOTQTD', 'PRECOUNITMEDIO', 'TOTLIQUIDO']:
-        if _c and _c in _pm_v.columns and _c not in _pm_cols:
-            _pm_cols.append(_c)
-    _pm_out = _pm_v[_pm_cols].copy()
-
-    # Métricas
-    _pm_c1, _pm_c2, _pm_c3 = st.columns(3)
-    with _pm_c1:
-        st.metric("Produtos", _pm_out[_pm_vk].nunique())
-    with _pm_c2:
-        st.metric("Não catalogados", int(_pm_out[_pm_vn].str.startswith('Não catalogado').sum()))
-    with _pm_c3:
-        if 'TOTLIQUIDO' in _pm_out.columns:
-            st.metric("Total Líquido", f"R$ {pd.to_numeric(_pm_out['TOTLIQUIDO'], errors='coerce').sum():,.2f}")
-
-    st.markdown("---")
-
-    # Filtros
-    _pmc1, _pmc2 = st.columns(2)
-    with _pmc1:
-        _pm_fc = st.text_input("🔍 Código", key="pm_fc")
-    with _pmc2:
-        _pm_fn = st.text_input("🔍 Produto", key="pm_fn")
-
-    _pm_view = _pm_out.copy()
-    if _pm_fc:
-        _pm_view = _pm_view[_pm_view[_pm_vk].astype(str).str.contains(_pm_fc, case=False, na=False)]
-    if _pm_fn:
-        _pm_view = _pm_view[_pm_view[_pm_vn].str.contains(_pm_fn, case=False, na=False)]
-
-    # Exibir tabela com colunas de moeda formatadas
-    _pm_display = _pm_view.copy()
-    if 'PRECOUNITMEDIO' in _pm_display.columns:
-        _pm_display['PRECOUNITMEDIO'] = pd.to_numeric(_pm_display['PRECOUNITMEDIO'], errors='coerce').apply(
-            lambda x: f"R$ {x:,.2f}" if pd.notnull(x) else ""
-        )
-    if 'TOTLIQUIDO' in _pm_display.columns:
-        _pm_display['TOTLIQUIDO'] = pd.to_numeric(_pm_display['TOTLIQUIDO'], errors='coerce').apply(
-            lambda x: f"R$ {x:,.2f}" if pd.notnull(x) else ""
-        )
-    _pm_rename = {
-        _pm_vk: 'Código', _pm_vn: 'Nome do Produto',
-        'TOTQTD': 'Qtd Vendida', 'PRECOUNITMEDIO': 'Preço Médio Unit.', 'TOTLIQUIDO': 'Total Líquido'
-    }
-    if _pm_vg: _pm_rename[_pm_vg] = 'Gramatura'
-    _pm_display = _pm_display.rename(columns=_pm_rename)
-    st.dataframe(_pm_display, use_container_width=True, height=480, hide_index=True)
-
-    # Export Excel
-    if st.button("📥 Exportar Excel", key="pm_exp"):
-        import io as _pmio, openpyxl as _pmxl
-        from openpyxl.styles import PatternFill as _PMF, Font as _PMFt, Alignment as _PMA, Border as _PMB, Side as _PMS
-        from openpyxl.utils import get_column_letter as _pmgl
-
-        _pmwb = _pmxl.Workbook()
-        _pmws = _pmwb.active
-        _pmws.title = "Preço Médio"
-
-        _pmhf = _PMF("solid", fgColor="1F4788")
-        _pmff = _PMFt(bold=True, color="FFFFFF", size=10)
-        _pmaf = _PMA(horizontal="center", vertical="center", wrap_text=True)
-        _pmbr = _PMB(left=_PMS(style='thin'), right=_PMS(style='thin'),
-                     top=_PMS(style='thin'), bottom=_PMS(style='thin'))
-        _pmal = _PMF("solid", fgColor="EEF3FC")
-
-        _pm_labels = {_pm_vk:'Código', _pm_vn:'Nome do Produto',
-                      'TOTQTD':'Qtd Vendida',
-                      'PRECOUNITMEDIO':'Preço Médio Unit.','TOTLIQUIDO':'Total Líquido'}
-        if _pm_vg: _pm_labels[_pm_vg] = 'Gramatura'
-        _pmws.append([_pm_labels.get(c,c) for c in _pm_cols])
-        for ci in range(1, len(_pm_cols)+1):
-            c = _pmws.cell(1, ci)
-            c.fill=_pmhf; c.font=_pmff; c.alignment=_pmaf; c.border=_pmbr
-        _pmws.row_dimensions[1].height = 28
-
-        _pm_i_pr = _pm_cols.index('PRECOUNITMEDIO')+1 if 'PRECOUNITMEDIO' in _pm_cols else None
-        _pm_i_lq = _pm_cols.index('TOTLIQUIDO')+1     if 'TOTLIQUIDO'     in _pm_cols else None
-        _pm_i_qt = _pm_cols.index('TOTQTD')+1         if 'TOTQTD'         in _pm_cols else None
-
-        for ri, row in enumerate(_pm_view.itertuples(index=False), 2):
-            _pmws.append(list(row))
-            fl = _pmal if ri%2==0 else _PMF()
-            for ci in range(1, len(_pm_cols)+1):
-                c = _pmws.cell(ri, ci)
-                c.border=_pmbr; c.alignment=_PMA(vertical="center")
-                if fl.fill_type: c.fill=fl
-                if ci==_pm_i_pr: c.number_format='R$ #,##0.00'
-                if ci==_pm_i_lq: c.number_format='R$ #,##0.00'
-                if ci==_pm_i_qt: c.number_format='#,##0'
-
-        for ci, w in enumerate([12,45,12,14,18,18][:len(_pm_cols)], 1):
-            _pmws.column_dimensions[_pmgl(ci)].width = w
-
-        _pmbuf = _pmio.BytesIO()
-        _pmwb.save(_pmbuf); _pmbuf.seek(0)
-        st.download_button("⬇️ Baixar Excel", data=_pmbuf.getvalue(),
-                           file_name="preco_medio.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           key="pm_dl")
-        st.success("✅ Gerado!")
 
 elif menu == "Pedidos Pendentes":
     st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Pedidos Pendentes de Faturamento</h2>', unsafe_allow_html=True)
@@ -4805,15 +4903,15 @@ elif menu == "Pedidos Pendentes":
     
     with col1:
         total_pendente = df_pend_filtrado['ValorPendente'].sum()
-        st.metric("Valor Total Pendente", f"R$ {total_pendente:,.2f}")
+        st.metric("Valor Total Pendente", f"R$ {formatar_numero_br(total_pendente, 2)}")
     
     with col2:
         qtd_pendente = df_pend_filtrado['QtdPendente'].sum()
-        st.metric("Qtd. Total Pendente", f"{qtd_pendente:,.0f}")
+        st.metric("Qtd. Total Pendente", f"{formatar_numero_br(qtd_pendente, 0)}")
     
     with col3:
         pedidos_unicos = df_pend_filtrado['NumeroPedido'].nunique()
-        st.metric("Pedidos Únicos", f"{pedidos_unicos:,}")
+        st.metric("Pedidos Únicos", f"{formatar_numero_br(pedidos_unicos, 0)}")
     
     with col4:
         perc_medio = df_pend_filtrado['PercEntregue'].mean() if len(df_pend_filtrado) > 0 else 0
@@ -5063,11 +5161,11 @@ elif menu == "Pedidos Pendentes":
             ) if _com_prev['VALOR_TOTAL'].sum() > 0 else 0
 
             with _kp1:
-                st.metric("Valor Total Previsto", f"R$ {_com_prev['VALOR_TOTAL'].sum():,.2f}")
+                st.metric("Valor Total Previsto", f"R$ {formatar_numero_br(_com_prev['VALOR_TOTAL'].sum(), 2)}")
             with _kp2:
                 st.metric("Média Ponderada de Dias", f"{_dias_pond:.1f} dias")
             with _kp3:
-                st.metric("Itens sem Capacidade", f"{len(_sem_prev):,}")
+                st.metric("Itens sem Capacidade", f"{formatar_numero_br(len(_sem_prev), 0)}")
 
             st.markdown("---")
 
@@ -5100,7 +5198,7 @@ elif menu == "Pedidos Pendentes":
             _cols_show = [c for c in _cols_show if c in _df_merge.columns]
             _df_show   = _df_merge[_cols_show].copy()
             _df_show['VALOR_TOTAL'] = _df_show['VALOR_TOTAL'].apply(
-                lambda x: f"R$ {x:,.2f}" if pd.notnull(x) else "R$ 0,00"
+                lambda x: f"R$ {formatar_numero_br(x, 2)}" if pd.notnull(x) else "R$ 0,00"
             )
             _df_show = _df_show.rename(columns={
                 'CodigoProduto':      'Código',
@@ -5991,21 +6089,21 @@ elif menu == "Performance de Vendedores":
     # ── Exibir KPI Cards ─────────────────────────────────────────────────────
     _pv_k1, _pv_k2, _pv_k3, _pv_k4 = st.columns(4)
     with _pv_k1:
-        render_kpi_card("Faturamento Líquido", f"R$ {_pv_fat_liq:,.0f}", icon="💰", color="#1F4788")
+        render_kpi_card("Faturamento Líquido", f"R$ {formatar_numero_br(_pv_fat_liq, 0)}", icon="💰", color="#1F4788")
     with _pv_k2:
-        render_kpi_card("Faturamento Bruto", f"R$ {_pv_fat_bruto:,.0f}", icon="💵", color="#2E86AB")
+        render_kpi_card("Faturamento Bruto", f"R$ {formatar_numero_br(_pv_fat_bruto, 0)}", icon="💵", color="#2E86AB")
     with _pv_k3:
-        render_kpi_card("Devoluções", f"R$ {_pv_fat_devol:,.0f}", icon="↩️", color="#EF4444")
+        render_kpi_card("Devoluções", f"R$ {formatar_numero_br(_pv_fat_devol, 0)}", icon="↩️", color="#EF4444")
     with _pv_k4:
-        render_kpi_card("Clientes Positivados", f"{_pv_clientes:,}", icon="👥", color="#28A745")
+        render_kpi_card("Clientes Positivados", f"{formatar_numero_br(_pv_clientes, 0)}", icon="👥", color="#28A745")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     _pv_k5, _pv_k6, _pv_k7, _pv_k8 = st.columns(4)
     with _pv_k5:
-        render_kpi_card("Ticket Médio", f"R$ {_pv_ticket:,.0f}", icon="🎯", color="#F4A261")
+        render_kpi_card("Ticket Médio", f"R$ {formatar_numero_br(_pv_ticket, 0)}", icon="🎯", color="#F4A261")
     with _pv_k6:
-        render_kpi_card("Volume Vendido", f"{_pv_vol_total:,.0f} un", icon="📦", color="#6C757D")
+        render_kpi_card("Volume Vendido", f"{formatar_numero_br(_pv_vol_total, 0)} un", icon="📦", color="#6C757D")
     with _pv_k7:
         render_kpi_card("Prazo Médio", f"{_pv_prazo:.0f} dias", icon="📅", color="#163561")
     with _pv_k8:
@@ -6113,7 +6211,7 @@ elif menu == "Performance de Vendedores":
     with _pv_ki1:
         render_kpi_card(
             "Índice de Inadimplência (R$)",
-            f"R$ {_pv_inad_vendedor:,.0f}",
+            f"R$ {formatar_numero_br(_pv_inad_vendedor, 0)}",
             icon="⚠️",
             color="#EF4444" if _pv_inad_vendedor > 0 else "#28A745"
         )
@@ -6132,7 +6230,7 @@ elif menu == "Performance de Vendedores":
     with _pv_kc1:
         render_kpi_card(
             "Valor Contratado",
-            f"R$ {_pv_contrato_valor:,.0f}",
+            f"R$ {formatar_numero_br(_pv_contrato_valor, 0)}",
             icon="📄",
             color="#1F4788"
         )
@@ -6230,7 +6328,7 @@ elif menu == "Performance de Vendedores":
             )
             _fig_fat = aplicar_layout_grafico(_fig_fat, height=340)
             _fig_fat.update_traces(
-                hovertemplate='<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>'
+                hovertemplate='<b>%{x}</b><br>R$ %{formatar_numero_br(y, 2)}<extra></extra>'
             )
             st.plotly_chart(_fig_fat, use_container_width=True)
 
@@ -6261,7 +6359,7 @@ elif menu == "Performance de Vendedores":
             )
             _fig_ticket = aplicar_layout_grafico(_fig_ticket, height=340)
             _fig_ticket.update_traces(
-                hovertemplate='<b>%{x}</b><br>Ticket: R$ %{y:,.2f}<extra></extra>'
+                hovertemplate='<b>%{x}</b><br>Ticket: R$ %{formatar_numero_br(y, 2)}<extra></extra>'
             )
             st.plotly_chart(_fig_ticket, use_container_width=True)
 
@@ -6288,7 +6386,7 @@ elif menu == "Performance de Vendedores":
         _pv_comp_disp = _pv_comp.copy()
         _pv_comp_disp['FaturamentoBruto'] = _pv_comp_disp['FaturamentoBruto'].apply(formatar_moeda)
         _pv_comp_disp['TicketMedio']      = _pv_comp_disp['TicketMedio'].apply(formatar_moeda)
-        _pv_comp_disp['VolumeTotal']      = _pv_comp_disp['VolumeTotal'].apply(lambda x: f"{x:,.0f} un")
+        _pv_comp_disp['VolumeTotal']      = _pv_comp_disp['VolumeTotal'].apply(lambda x: f"{formatar_numero_br(x, 0)} un")
         _pv_comp_disp['ComissaoMedia']    = _pv_comp_disp['ComissaoMedia'].apply(
             lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/D"
         )
@@ -6646,7 +6744,7 @@ elif menu == "Performance de Vendedores":
                 ws3.merge_range(0, 0, 0, 7, 'RESULTADO POR PRODUTO — POR VENDEDOR', fmt_titulo)
                 ws3.write(1, 0,
                     f'Região: {_pv_regiao}  |  Período: {_pv_periodo}  |  '
-                    f'Total Empresa no Período: R$ {_rp_total_empresa:,.2f}  |  '
+                    f'Total Empresa no Período: R$ {formatar_numero_br(_rp_total_empresa, 2)}  |  '
                     f'Gerado em: {_pv_now.strftime("%d/%m/%Y %H:%M")}',
                     fmt_subtitulo)
 
@@ -6667,7 +6765,7 @@ elif menu == "Performance de Vendedores":
                     # ── Cabeçalho do vendedor ─────────────────────────────
                     ws3.set_row(_rp_row, 22)
                     ws3.merge_range(_rp_row, 0, _rp_row, 7,
-                        f'👤  {_vend_nome}   —   Total: R$ {_vend_total:,.2f}   '
+                        f'👤  {_vend_nome}   —   Total: R$ {formatar_numero_br(_vend_total, 2)}   '
                         f'({_vend_perc_empresa:.2%} do total da empresa no período)',
                         fmt_vend_header)
                     _rp_row += 1
@@ -6710,7 +6808,7 @@ elif menu == "Performance de Vendedores":
                             _g_perc = (_g_fat / _vend_total) if _vend_total > 0 else 0
                             ws3.write(_rp_row, 0, '', fmt_grupo_sep)
                             ws3.merge_range(_rp_row, 1, _rp_row, 5,
-                                f'▶  {_g}  —  Total: R$ {_g_fat:,.2f}  ({_g_perc:.2%} do total do vendedor)',
+                                f'▶  {_g}  —  Total: R$ {formatar_numero_br(_g_fat, 2)}  ({_g_perc:.2%} do total do vendedor)',
                                 fmt_grupo_sep)
                             ws3.write(_rp_row, 6, _g_perc, fmt_grupo_perc)
                             ws3.write(_rp_row, 7, '', fmt_grupo_sep)
@@ -7181,7 +7279,7 @@ elif menu == "Performance de Vendedores":
             hole=0.45
         )
         _fig_pie.update_traces(textposition='inside', textinfo='percent+label',
-                               hovertemplate='<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>')
+                               hovertemplate='<b>%{label}</b><br>R$ %{formatar_numero_br(value, 2)}<br>%{percent}<extra></extra>')
         _fig_pie.update_layout(
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(family='Inter, Segoe UI, sans-serif', size=11),
@@ -7197,7 +7295,7 @@ elif menu == "Performance de Vendedores":
         _fig_abc.add_trace(go.Bar(
             x=_pv_top15['NomeProduto'], y=_pv_top15['Total'],
             name='Faturamento', marker_color='#1F4788',
-            hovertemplate='<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>'
+            hovertemplate='<b>%{x}</b><br>R$ %{formatar_numero_br(y, 2)}<extra></extra>'
         ))
         _fig_abc.add_trace(go.Scatter(
             x=_pv_top15['NomeProduto'], y=_pv_top15['CumulativaPerc'].head(15),
@@ -7312,15 +7410,15 @@ elif menu == "Performance de Vendedores":
             pdf.set_font('Helvetica', '', 8)
 
             _pv_kpis_pdf = [
-                ('Faturamento Líquido',       f"R$ {_pv_fat_liq:,.2f}"),
-                ('Faturamento Bruto',          f"R$ {_pv_fat_bruto:,.2f}"),
-                ('Devoluções',                 f"R$ {_pv_fat_devol:,.2f}"),
-                ('Clientes Positivados',       f"{_pv_clientes:,}"),
-                ('Ticket Médio',               f"R$ {_pv_ticket:,.2f}"),
-                ('Volume Vendido',             f"{_pv_vol_total:,.0f} un"),
+                ('Faturamento Líquido',       f"R$ {formatar_numero_br(_pv_fat_liq, 2)}"),
+                ('Faturamento Bruto',          f"R$ {formatar_numero_br(_pv_fat_bruto, 2)}"),
+                ('Devoluções',                 f"R$ {formatar_numero_br(_pv_fat_devol, 2)}"),
+                ('Clientes Positivados',       f"{formatar_numero_br(_pv_clientes, 0)}"),
+                ('Ticket Médio',               f"R$ {formatar_numero_br(_pv_ticket, 2)}"),
+                ('Volume Vendido',             f"{formatar_numero_br(_pv_vol_total, 0)} un"),
                 ('Prazo Médio de Venda',       f"{_pv_prazo:.0f} dias"),
                 ('Comissão Média',             _pv_comissao),
-                ('Índice de Inadimplência',    f"R$ {_pv_inad_vendedor:,.2f}"),
+                ('Índice de Inadimplência',    f"R$ {formatar_numero_br(_pv_inad_vendedor, 2)}"),
                 ('Inadimplência / Fat. Bruto', f"{_pv_perc_inad:.1f}%"),
             ]
             w1, w2 = 85, 95
@@ -7356,10 +7454,10 @@ elif menu == "Performance de Vendedores":
                 pdf.set_text_color(50, 50, 50)
                 pdf.set_font('Helvetica', '', 7)
                 _vend_str = str(row['Vendedor'])[:22]
-                _fat_str  = f"R$ {row['FaturamentoBruto']:,.2f}"
+                _fat_str  = f"R$ {formatar_numero_br(row['FaturamentoBruto'], 2)}"
                 _cli_str  = str(int(row['ClientesAtendidos']))
-                _tick_str = f"R$ {row['TicketMedio']:,.2f}"
-                _vol_str  = f"{row.get('VolumeTotal', 0):,.0f}"
+                _tick_str = f"R$ {formatar_numero_br(row['TicketMedio'], 2)}"
+                _vol_str  = f"{formatar_numero_br(row.get('VolumeTotal', 0), 0)}"
                 _prz_str  = f"{row.get('PrazoMedio', 0):.0f}"
                 _com_str  = f"{row['ComissaoMedia']:.2f}%" if pd.notnull(row.get('ComissaoMedia')) else "N/D"
                 _row_vals = [_vend_str, _fat_str, _cli_str, _tick_str, _vol_str, _prz_str, _com_str]
@@ -7389,7 +7487,7 @@ elif menu == "Performance de Vendedores":
                 pdf.set_text_color(50, 50, 50)
                 pdf.set_font('Helvetica', '', 7)
                 _prod_str = str(row['NomeProduto'])[:38]
-                _fat_str  = f"R$ {row['Total']:,.2f}"
+                _fat_str  = f"R$ {formatar_numero_br(row['Total'], 2)}"
                 _part_str = f"{row['Participacao']:.2f}%"
                 _acum_str = f"{row['CumulativaPerc']:.2f}%"
                 _cli_str  = str(int(row['Clientes']))
@@ -7410,7 +7508,7 @@ elif menu == "Performance de Vendedores":
                 pdf.set_text_color(50, 50, 50)
                 pdf.set_font('Helvetica', '', 8)
                 pdf.set_fill_color(255, 240, 240)
-                pdf.cell(95, 6, f'  Valor em Aberto: R$ {_pv_inad_vendedor:,.2f}', border='LB', fill=True)
+                pdf.cell(95, 6, f'  Valor em Aberto: R$ {formatar_numero_br(_pv_inad_vendedor, 2)}', border='LB', fill=True)
                 pdf.cell(90, 6, f'  % sobre Fat. Bruto: {_pv_perc_inad:.1f}%', border='RB', fill=True, ln=True)
                 pdf.ln(4)
 
@@ -7700,12 +7798,12 @@ elif menu == "Performance de Vendedores":
                     # Faturamento
                     f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'
                     f'<span style="color:#6C757D;font-size:0.78rem;">💰 Faturamento</span>'
-                    f'<span style="font-weight:700;color:#163561;font-size:0.95rem;">R$ {_fat_r:,.0f}</span></div>'
+                    f'<span style="font-weight:700;color:#163561;font-size:0.95rem;">R$ {formatar_numero_br(_fat_r, 0)}</span></div>'
 
                     # Meta
                     f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
                     f'<span style="color:#6C757D;font-size:0.78rem;">🎯 Meta ({_meta_lbl})</span>'
-                    f'<span style="font-weight:600;color:#4A7BC8;font-size:0.85rem;">R$ {_meta_v:,.0f}</span></div>'
+                    f'<span style="font-weight:600;color:#4A7BC8;font-size:0.85rem;">R$ {formatar_numero_br(_meta_v, 0)}</span></div>'
 
                     # Barra progresso meta
                     f'<div style="background:#F1F5F9;border-radius:6px;height:7px;margin:7px 0 3px;">'
@@ -7762,7 +7860,7 @@ elif menu == "Performance de Vendedores":
                     f'<div style="display:flex;justify-content:space-around;align-items:center;">'
 
                     f'<div style="text-align:center;">'
-                    f'<div style="font-size:1.0rem;font-weight:700;color:#1F4788;">R$ {_contrato_v2:,.0f}</div>'
+                    f'<div style="font-size:1.0rem;font-weight:700;color:#1F4788;">R$ {formatar_numero_br(_contrato_v2, 0)}</div>'
                     f'<div style="font-size:0.68rem;color:#6C757D;">Contratado</div></div>'
 
                     f'<div style="font-size:1.2rem;color:#CDD4E0;">|</div>'
@@ -8069,8 +8167,8 @@ elif menu == "Performance de Vendedores":
         <div class="card-label">FATURAMENTO</div>
       </div>
       <div class="card-body">
-        <div class="card-val">R$ {_fat_r:,.0f}</div>
-        <div class="card-sub">Meta: R$ {_meta_v:,.0f}</div>
+        <div class="card-val">R$ {formatar_numero_br(_fat_r, 0)}</div>
+        <div class="card-sub">Meta: R$ {formatar_numero_br(_meta_v, 0)}</div>
         <div class="meta-bar-wrap">
           <div class="meta-bar-bg"><div class="meta-bar-fg"></div></div>
         </div>
@@ -8146,7 +8244,7 @@ elif menu == "Performance de Vendedores":
         <div class="card-label">VALOR CONTRATADO</div>
       </div>
       <div class="card-body">
-        <div class="card-val">R$ {_contrato_v:,.0f}</div>
+        <div class="card-val">R$ {formatar_numero_br(_contrato_v, 0)}</div>
         <div class="card-sub">no mês de referência</div>
       </div>
       <div class="card-dot"></div>
@@ -8169,7 +8267,7 @@ elif menu == "Performance de Vendedores":
     <div class="card-icon" style="width:70px;height:70px;font-size:34px;">M</div>
     <div>
       <div class="prox-label">META {_mes_prox_nm.upper()}/{_ano_prox_nm}</div>
-      <div class="prox-val">R$ {_meta_prox:,.0f}</div>
+      <div class="prox-val">R$ {formatar_numero_br(_meta_prox, 0)}</div>
       <div class="prox-sub">{_meta_prox_lbl}</div>
     </div>
   </div>
@@ -8266,170 +8364,23 @@ elif menu == "Performance de Vendedores":
             st.error(f"Erro ao gerar imagem: {_e_png}")
             st.info("Instale Pillow: pip install Pillow")
 
-    if st.button("📊 Gerar Relatório Detalhado (Excel)", key="btn_rel_det_vend", type="primary"):
-        try:
-            import openpyxl
-            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-            from openpyxl.utils import get_column_letter
-            import io as _io_det
-
-            _wb_det = openpyxl.Workbook()
-            _wb_det.remove(_wb_det.active)
-            _H_FILL = PatternFill("solid", fgColor="1F4788")
-            _H_FONT = Font(bold=True, color="FFFFFF", size=10)
-            _H_ALN  = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            _BRD    = Border(left=Side(style="thin"), right=Side(style="thin"),
-                             top=Side(style="thin"),  bottom=Side(style="thin"))
-            _ALT    = PatternFill("solid", fgColor="EEF3FC")
-
-            _vends_dl = _vends_ativos if _vends_ativos else []
-
-            for _vend in _vends_dl:
-                _fat_r   = float(_fat_card.get(_vend, 0))
-                _meta_v, _meta_lbl, _base_meta = _meta_card(_vend)
-                _perc_m  = (_fat_r / _meta_v * 100) if _meta_v > 0 else 0
-                _posit_v = int(_posit_card.get(_vend, 0))
-                _base_v  = int(_base_hist.get(_vend, 0))
-                _posit_p = (_posit_v / _base_v * 100) if _base_v > 0 else 0
-
-                # Crescimento vs mês anterior ao de referência
-                _mes_ant2    = _mes_card - 1 if _mes_card > 1 else 12
-                _ano_ant2    = _ano_card if _mes_card > 1 else _ano_card - 1
-                _fat_mes_ant = float(_df_nf_hist[
-                    (_df_nf_hist["Vendedor"] == _vend) &
-                    (_df_nf_hist["DataEmissao"].dt.month == _mes_ant2) &
-                    (_df_nf_hist["DataEmissao"].dt.year  == _ano_ant2)
-                ]["TotalProduto"].sum())
-                _cresc_m = ((_fat_r - _fat_mes_ant) / _fat_mes_ant * 100) if _fat_mes_ant > 0 else 0
-                _cresc_a = ((_fat_r - _base_meta) / _base_meta * 100) if _base_meta > 0 else 0
-
-                # Contratado x Faturado (mês de referência)
-                _contrato_v3 = 0.0
-                if _pv_df_contrato is not None:
-                    try:
-                        _ctr_mes_v3 = _pv_df_contrato.copy()
-                        if _pv_col_data_contrato and _pv_col_data_contrato in _ctr_mes_v3.columns:
-                            _ctr_mes_v3[_pv_col_data_contrato] = pd.to_datetime(
-                                _ctr_mes_v3[_pv_col_data_contrato], errors='coerce'
-                            )
-                            _ctr_mes_v3 = _ctr_mes_v3[
-                                (_ctr_mes_v3[_pv_col_data_contrato].dt.month == _mes_card) &
-                                (_ctr_mes_v3[_pv_col_data_contrato].dt.year == _ano_card)
-                            ]
-                        _contrato_v3 = _ctr_mes_v3[
-                            _ctr_mes_v3['_FuncNorm'] == str(_vend).strip().upper()
-                        ]['_ValorContrato'].sum()
-                    except Exception:
-                        _contrato_v3 = 0.0
-                _perc_real_ctr3 = (_fat_r / _contrato_v3 * 100) if _contrato_v3 > 0 else 0
-
-                # Clientes sem compra há 60 dias (base do vendedor)
-                _corte60 = _pv_now2 - pd.Timedelta(days=60)
-                _ult_cli = _df_nf_hist[_df_nf_hist["Vendedor"] == _vend].groupby("CPF_CNPJ")["DataEmissao"].max()
-                _sem60   = int((_ult_cli < _corte60).sum())
-
-                # Top 3 produtos no mês de referência
-                _top3 = (
-                    _df_mes_card[_df_mes_card["Vendedor"] == _vend]
-                    .groupby("NomeProduto")["TotalProduto"].sum()
-                    .sort_values(ascending=False).head(3)
-                )
-                _top3_str = " | ".join(_top3.index.tolist()) if len(_top3) > 0 else "Sem dados"
-
-                _aba = _vend[:28]
-                _ws  = _wb_det.create_sheet(title=_aba)
-
-                _resumo_xl = [
-                    [f"RESUMO — {_label_mes_card.upper()}", ""],
-                    ["Vendedor", _vend],
-                    ["", ""],
-                    ["Faturamento", f"R$ {_fat_r:,.2f}"],
-                    ["Meta", f"R$ {_meta_v:,.2f} ({_meta_lbl})"],
-                    ["Meta atingida (%)", f"{_perc_m:.1f}%"],
-                    [f"Crescimento vs {_mes_nome_det.get(_mes_ant2,'')[:3]}/{_ano_ant2}", f"{_cresc_m:+.1f}%"],
-                    [f"Crescimento vs {_mes_nome_det.get(_mes_meta,'')[:3]}/{_ano_meta}", f"{_cresc_a:+.1f}%"],
-                    ["", ""],
-                    ["Valor Contratado (mês)", f"R$ {_contrato_v3:,.2f}"],
-                    ["% Realização (Faturado / Contratado)", f"{_perc_real_ctr3:.1f}%"],
-                    ["", ""],
-                    ["Base total de clientes", str(_base_v)],
-                    ["Positivados no mês", str(_posit_v)],
-                    ["% Positivação", f"{_posit_p:.1f}%"],
-                    ["Clientes sem compra há 60 dias", str(_sem60)],
-                    ["", ""],
-                    ["Top 3 produtos", _top3_str],
-                ]
-
-                for _ri3, (_k3, _v3) in enumerate(_resumo_xl, 1):
-                    _ws.cell(_ri3, 1, _k3)
-                    _ws.cell(_ri3, 2, _v3)
-                    if _ri3 == 1:
-                        for _ci3 in (1, 2):
-                            _c3 = _ws.cell(_ri3, _ci3)
-                            _c3.fill = _H_FILL; _c3.font = _H_FONT; _c3.alignment = _H_ALN
-                    elif _k3:
-                        _ws.cell(_ri3, 1).font = Font(bold=True, color="1F4788")
-                        if _ri3 % 2 == 0:
-                            for _ci3 in (1, 2): _ws.cell(_ri3, _ci3).fill = _ALT
-                    for _ci3 in (1, 2): _ws.cell(_ri3, _ci3).border = _BRD
-
-                _ws.column_dimensions["A"].width = 38
-                _ws.column_dimensions["B"].width = 32
-                _ws.row_dimensions[1].height = 22
-
-                # Tabela detalhada de vendas do mês
-                _lr = len(_resumo_xl) + 2
-                _ws.cell(_lr, 1, f"Vendas Detalhadas — {_label_mes_card}").font = Font(bold=True, size=11, color="1F4788")
-                _lr += 1
-
-                _df_dl = _df_mes_card[_df_mes_card["Vendedor"] == _vend][
-                    ["DataEmissao","RazaoSocial","NomeProduto","Quantidade","TotalProduto"]
-                ].copy()
-                _df_dl["DataEmissao"] = _df_dl["DataEmissao"].dt.strftime("%d/%m/%Y")
-                _hdrs = ["Data","Cliente","Produto","Qtd","Valor (R$)"]
-
-                for _ci3, _h3 in enumerate(_hdrs, 1):
-                    _c3 = _ws.cell(_lr, _ci3, _h3)
-                    _c3.fill = _H_FILL; _c3.font = _H_FONT; _c3.alignment = _H_ALN; _c3.border = _BRD
-
-                for _ri3, _rw in enumerate(_df_dl.values.tolist(), _lr + 1):
-                    for _ci3, _vl in enumerate(_rw, 1):
-                        _c3 = _ws.cell(_ri3, _ci3, _vl)
-                        _c3.border = _BRD
-                        if _ri3 % 2 == 0: _c3.fill = _ALT
-                        if _ci3 == 5:
-                            try:
-                                _ws.cell(_ri3, _ci3, float(_vl))
-                                _ws.cell(_ri3, _ci3).number_format = "R$ #,##0.00"
-                            except Exception: pass
-
-                for _ci3, _lg in enumerate([12, 30, 35, 10, 14], 1):
-                    _ws.column_dimensions[get_column_letter(_ci3)].width = _lg
-
-            _buf3 = _io_det.BytesIO()
-            _wb_det.save(_buf3)
-            _buf3.seek(0)
-            st.download_button(
-                label="⬇️ Baixar Relatório (Excel)",
-                data=_buf3.getvalue(),
-                file_name=f"performance_{_mes_card:02d}_{_ano_card}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="dl_perf_det_xlsx"
-            )
-            st.success("✅ Relatório gerado!")
-        except Exception as _e3:
-            st.error(f"Erro ao gerar relatório: {_e3}")
-
 # ====================== RANKINGS ======================
 elif menu == "Rankings":
     st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Rankings</h2>', unsafe_allow_html=True)
-    
+
+    _rank_ini, _rank_fim = renderizar_filtros_locais("rank", "📅 Ajustar Período")
+    _rank_notas = notas_unicas.copy()
+    if _rank_ini:
+        _rank_notas = _rank_notas[_rank_notas['DataEmissao'] >= pd.to_datetime(_rank_ini)]
+    if _rank_fim:
+        _rank_notas = _rank_notas[_rank_notas['DataEmissao'] <= pd.to_datetime(_rank_fim)]
+
     tab1, tab2 = st.tabs(["📊 Vendedores", "👥 Clientes"])
     
     with tab1:
         st.subheader("Ranking de Vendedores por Valor")
         
-        ranking_vendedores = notas_unicas.groupby('Vendedor').agg({
+        ranking_vendedores = _rank_notas.groupby('Vendedor').agg({
             'Valor_Real': 'sum',
             'Numero_NF': 'count',
             'CPF_CNPJ': 'nunique'
@@ -8467,7 +8418,7 @@ elif menu == "Rankings":
         
         top_n = st.selectbox("Exibir Top:", [10, 20, 50, 100], key="top_clientes")
         
-        ranking_clientes = notas_unicas.groupby(['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado']).agg({
+        ranking_clientes = _rank_notas.groupby(['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado']).agg({
             'Valor_Real': 'sum',
             'Numero_NF': 'count'
         }).reset_index()
@@ -8687,14 +8638,14 @@ elif menu == "Consulta Clientes":
         # Exibir preços calculados
         _pc1, _pc2, _pc3 = st.columns(3)
         with _pc1:
-            st.metric("Tabela Base", f"R$ {_preco_base:,.2f}",
+            st.metric("Tabela Base", f"R$ {formatar_numero_br(_preco_base, 2)}",
                       help="Preço da tabela padrão sem adicional de estado")
         with _pc2:
             st.metric(f"Tabela 3% ({_perc_adicional}% estado)",
-                      f"R$ {_tab_3pct:,.2f}",
+                      f"R$ {formatar_numero_br(_tab_3pct, 2)}",
                       help="Tabela base + percentual do estado = tabela comissão 3%")
         with _pc3:
-            st.metric("Tabela 4%", f"R$ {_tab_4pct:,.2f}",
+            st.metric("Tabela 4%", f"R$ {formatar_numero_br(_tab_4pct, 2)}",
                       help="Tabela 3% + 6% = tabela comissão 4%")
 
     # ── Calcular comissão sobre o valor negociado ─────────────────────
@@ -8711,7 +8662,7 @@ elif menu == "Consulta Clientes":
                 if _valor_digitado >= (_tabela_4_objetivo - 0.001):
                     _comissao_calc = '4%'
                     _variacao = round(((_valor_digitado - _tab_3pct) / _tab_3pct) * 100, 2)
-                    _cor = "#10B981"; _msg = f"Comissão **4%** — objetivo de R$ {_tabela_4_objetivo:,.2f} atingido"
+                    _cor = "#10B981"; _msg = f"Comissão **4%** — objetivo de R$ {formatar_numero_br(_tabela_4_objetivo, 2)} atingido"
                 else:
                     # Se não atingiu 4%, rodamos a função padrão para as outras faixas
                     _comissao_calc = calcular_comissao(_val_neg, _tab_3pct)
@@ -8734,9 +8685,9 @@ elif menu == "Consulta Clientes":
                     </div>
                     <div style="font-size:0.82rem;color:#6C757D;margin-top:3px;">{_msg}</div>
                     <div style="font-size:0.78rem;color:#ADB5BD;margin-top:4px;">
-                        Valor negociado: R$ {_val_neg:,.2f} &nbsp;·&nbsp;
-                        Tabela Estado (3%): R$ {round(_tab_3pct, 2):,.2f} &nbsp;·&nbsp;
-                        Meta para 4%: R$ {_tabela_4_objetivo:,.2f}
+                        Valor negociado: R$ {formatar_numero_br(_val_neg, 2)} &nbsp;·&nbsp;
+                        Tabela Estado (3%): R$ {formatar_numero_br(round(_tab_3pct, 2), 2)} &nbsp;·&nbsp;
+                        Meta para 4%: R$ {formatar_numero_br(_tabela_4_objetivo, 2)}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -8980,7 +8931,7 @@ elif menu == "__erp_novo_pedido__":
             with _m1:
                 st.metric("Itens", len(st.session_state.erp_itens))
             with _m2:
-                st.metric("Total do Pedido", f"R$ {_tot_erp:,.2f}")
+                st.metric("Total do Pedido", f"R$ {formatar_numero_br(_tot_erp, 2)}")
             with _m3:
                 _n_alertas = sum(
                     1 for i in st.session_state.erp_itens
@@ -9158,7 +9109,7 @@ elif menu == "__erp_meus_pedidos__":
                           if p.get("status") not in ("faturado", "cancelado"))
         _k1, _k2, _k3 = st.columns(3)
         _erp_kpi(_k1, "Total de Pedidos", str(_total_mp))
-        _erp_kpi(_k2, "Valor Total", f"R$ {_valor_mp:,.2f}", "#15803D")
+        _erp_kpi(_k2, "Valor Total", f"R$ {formatar_numero_br(_valor_mp, 2)}", "#15803D")
         _erp_kpi(_k3, "Em Aberto", str(_abertos_mp), "#C2410C")
 
         # Listagem
@@ -9174,7 +9125,7 @@ elif menu == "__erp_meus_pedidos__":
                 _id_p      = _p.get("id", "")
 
                 with st.expander(
-                    f"{_num_p}  ·  {_cli_p}  ·  R$ {_val_p:,.2f}  ·  "
+                    f"{_num_p}  ·  {_cli_p}  ·  R$ {formatar_numero_br(_val_p, 2)}  ·  "
                     f"{_criado_p}", expanded=False
                 ):
                     st.markdown(_erp_badge(_status_p), unsafe_allow_html=True)
@@ -9335,7 +9286,7 @@ elif menu == "__erp_fila_aprovacao__":
         _kf1, _kf2, _kf3 = st.columns(3)
         _erp_kpi(_kf1, "Aguardando Aprovação", str(_tot_fila))
         _erp_kpi(_kf2, "Valor Total na Fila",
-                 f"R$ {_val_fila:,.2f}", "#15803D")
+                 f"R$ {formatar_numero_br(_val_fila, 2)}", "#15803D")
         _erp_kpi(_kf3, "⚠️ Urgentes (+48h)", str(_urgentes), "#C2410C")
 
         if not _enviados:
@@ -9359,7 +9310,7 @@ elif menu == "__erp_fila_aprovacao__":
                 _titulo_f = (
                     f"{'🔴 ' if _urgente_f else ''}{_num_f}  ·  "
                     f"{_cli_f}  ·  {_vend_f}  ·  "
-                    f"R$ {_val_f:,.2f}  ·  {_dias_f}d na fila"
+                    f"R$ {formatar_numero_br(_val_f, 2)}  ·  {_dias_f}d na fila"
                 )
 
                 with st.expander(_titulo_f, expanded=_urgente_f):
@@ -9508,7 +9459,7 @@ elif menu == "__erp_todos_pedidos__":
             }.get(_s, "#1F4788")
             _erp_kpi(_cols_kpi_tp[_ci],
                      _s.replace("_"," ").title(),
-                     f"{_cnt}  ·  R$ {_val:,.0f}", _cor_tp)
+                     f"{_cnt}  ·  R$ {formatar_numero_br(_val, 0)}", _cor_tp)
 
         st.markdown("---")
 
@@ -9544,7 +9495,7 @@ elif menu == "__erp_todos_pedidos__":
 
             with st.expander(
                 f"{_num_t}  ·  {_cli_t}  ·  {_vnd_t}  ·  "
-                f"R$ {_val_t:,.2f}  ·  {_dat_t}",
+                f"R$ {formatar_numero_br(_val_t, 2)}  ·  {_dat_t}",
                 expanded=False
             ):
                 st.markdown(_erp_badge(_sts_t), unsafe_allow_html=True)
