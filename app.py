@@ -3166,11 +3166,11 @@ elif menu == "Positivação":
         if len(_prod_fat) == 0:
             st.info("ℹ️ Nenhum produto encontrado. Ajuste os filtros acima.")
         else:
-            # Valor correto para este módulo: soma da coluna PrecoQtdXItem da planilha CONSULTA_VENDEDORES
-            _val_col = 'PrecoQtdXItem' if 'PrecoQtdXItem' in _prod_fat.columns else 'TotalProduto'
+            # Fonte de dados: exclusivamente CONSULTA_VENDEDORES.xlsx (df).
+            # Quantidade Vendida = soma de Quantidade | Faturamento = soma de TotalProduto
             _prod_agrup = _prod_fat.groupby(['CodigoProduto', 'NomeProduto']).agg(
                 Quantidade=('Quantidade', 'sum'),
-                TotalProduto=(_val_col, 'sum')
+                TotalProduto=('TotalProduto', 'sum')
             ).reset_index()
 
             if _fp_ordem == "Faturamento (Maior)":
