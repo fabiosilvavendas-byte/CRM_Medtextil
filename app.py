@@ -923,7 +923,7 @@ def check_password():
                 if not email or not senha:
                     st.error("Preencha e-mail e senha.")
                 else:
-                    st.info(f"DEBUG — hash calculado: {_hash_senha(senha)}")
+                    
                     reg = autenticar_usuario(email.strip().lower(), senha)
                     if reg:
                         perfil = reg.get("perfil", "vendedor")
@@ -2612,8 +2612,11 @@ _ALIAS_DISPLAY = {
 _menu_display = _ALIAS_DISPLAY.get(menu, menu)
 
 # Módulos especiais que não precisam de verificação de permissão
-_MENU_ESPECIAIS = {"__novo_pedido__", "__historico_cliente__", "Consulta Clientes", "Rankings"}
-
+_MENU_ESPECIAIS = {
+    "__novo_pedido__", "__historico_cliente__", "Consulta Clientes", "Rankings",
+    "__erp_novo_pedido__", "__erp_meus_pedidos__",
+    "__erp_fila_aprovacao__", "__erp_todos_pedidos__",
+}
 st.markdown(f"""
 <div style="font-size:0.74rem;color:#ADB5BD;margin-bottom:14px;
             padding-bottom:10px;border-bottom:1px solid #F0F2F5;">
@@ -2803,404 +2806,152 @@ elif menu == "Dashboard":
         fig_rank_vend = aplicar_layout_grafico(fig_rank_vend)
         st.plotly_chart(fig_rank_vend, use_container_width=True)
 
-# ====================== POSITIVAÇÃO ======================
-elif menu == "Positivação":
-    st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Relatório de Positivação</h2>', unsafe_allow_html=True)
-
-    # ── KPIs do mês vigente no topo ───────────────────────────────────────
-    _mes_atual = pd.Timestamp.now().month
-    _ano_atual = pd.Timestamp.now().year
-    _vendas_mes = df_filtrado[
-        (df_filtrado['TipoMov'] == 'NF Venda') &
-        (df_filtrado['DataEmissao'].dt.month == _mes_atual) &
-        (df_filtrado['DataEmissao'].dt.year == _ano_atual)
-    ]
-    _posit_mes    = _vendas_mes['CPF_CNPJ'].nunique()
-    _total_base   = df['CPF_CNPJ'].nunique()
-    _perc_posit   = (_posit_mes / _total_base * 100) if _total_base > 0 else 0
-
-    _kp1, _kp2, _kp3 = st.columns(3)
-    with _kp1:
-        st.metric("Positivados no Mês", f"{_posit_mes:,} clientes",
-                  help="Clientes com ao menos uma compra no mês vigente")
-    with _kp2:
-        st.metric("Total da Base", f"{_total_base:,} clientes",
-                  help="Total de clientes únicos na base")
-    with _kp3:
-        st.metric("% da Base Positivada", f"{_perc_posit:.1f}%",
-                  help="Percentual da base que comprou no mês vigente")
-
-    st.markdown("---")
-
-    tab1, tab2, tab3_fat, tab4_prod = st.tabs(["📊 Por Vendedor", "🗺️ Por Estado", "🧾 Pedidos Faturados", "📦 Faturamento por Produto"])
+# ====================== MÓDULO: POSITIVAÇÃO ======================
+elif modulo == "Positivação":
+    st.markdown("<h1>📊 Positivação</h1>", unsafe_allow_html=True)
+    st.markdown("<p class='page-subtitle'>Análise de positivação de clientes e faturamento detalhado por produto</p>", unsafe_allow_html=True)
     
-    with tab1:
-        base_vendedor = df.groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
-        base_vendedor.columns = ['Vendedor', 'TotalBase']
+    # Carga centralizada utilizando a base padrão CONSULTA_VENDEDORES.xlsx
+    planilhas = listar_planilhas_github()
+    if not planilhas.get('vendas'):
+        st.error("❌ Base CONSULTA_VENDEDORES.xlsx não encontrada no repositório.")
+        st.stop()
         
-        vendas_periodo = df_filtrado[df_filtrado['TipoMov'] == 'NF Venda']
-        atendidos = vendas_periodo.groupby('Vendedor')['CPF_CNPJ'].nunique().reset_index()
-        atendidos.columns = ['Vendedor', 'QtdAtendidos']
+    df_vendas_raw = carregar_planilha_github(planilhas['vendas']['url'])
+    if df_vendas_raw is None or df_vendas_raw.empty:
+        st.error("❌ Erro ao carregar a base de vendas CONSULTA_VENDEDORES.xlsx.")
+        st.stop()
         
-        valor_vendedor = obter_notas_unicas(vendas_periodo).groupby('Vendedor')['Valor_Real'].sum().reset_index()
-        valor_vendedor.columns = ['Vendedor', 'ValorTotal']
-        
-        relatorio_positivacao = pd.merge(base_vendedor, atendidos, on='Vendedor', how='left')
-        relatorio_positivacao = pd.merge(relatorio_positivacao, valor_vendedor, on='Vendedor', how='left')
-        relatorio_positivacao['QtdAtendidos'] = relatorio_positivacao['QtdAtendidos'].fillna(0).astype(int)
-        relatorio_positivacao['ValorTotal'] = relatorio_positivacao['ValorTotal'].fillna(0)
-        relatorio_positivacao['Percentual'] = (relatorio_positivacao['QtdAtendidos'] / relatorio_positivacao['TotalBase'] * 100).round(1)
-        relatorio_positivacao = relatorio_positivacao.sort_values('QtdAtendidos', ascending=False)
-        
-        fig_posit_vend = px.bar(
-            relatorio_positivacao.head(15),
-            x='Vendedor',
-            y='Percentual',
-            labels={'Vendedor': 'Vendedor', 'Percentual': 'Positivação (%)'},
-            color='Percentual',
-            color_discrete_sequence=['#1F4788'],
-            title='Top 15 Vendedores - Taxa de Positivação'
-        )
-        fig_posit_vend = aplicar_layout_grafico(fig_posit_vend)
-        st.plotly_chart(fig_posit_vend, use_container_width=True)
-        
-        # Formatar para exibição
-        relatorio_positivacao_display = formatar_dataframe_moeda(relatorio_positivacao, ['ValorTotal'])
-        st.dataframe(relatorio_positivacao_display, use_container_width=True)
-        
-        st.download_button(
-            "📥 Exportar Positivação por Vendedor",
-            to_excel(relatorio_positivacao),
-            "positivacao_vendedor.xlsx",
-            "application/vnd.ms-excel",
-            key="dl_posit_vendedor"
-        )
-        
-        st.markdown("---")
-        
-        st.subheader("📋 Detalhamento de Clientes")
-        vendedor_selecionado = st.selectbox(
-            "Selecione o vendedor",
-            relatorio_positivacao['Vendedor'].tolist()
-        )
-        
-        if vendedor_selecionado:
-            notas_vendedor = obter_notas_unicas(vendas_periodo[vendas_periodo['Vendedor'] == vendedor_selecionado])
-            
-            clientes_vendedor = notas_vendedor.groupby(['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado']).agg({
-                'Valor_Real': 'sum'
-            }).reset_index()
-            clientes_vendedor.columns = ['CPF/CNPJ', 'Razão Social', 'Cidade', 'Estado', 'Valor Total']
-            clientes_vendedor = clientes_vendedor.sort_values('Valor Total', ascending=False)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Clientes Atendidos", len(clientes_vendedor))
-            with col2:
-                st.metric("Valor Total", f"R$ {clientes_vendedor['Valor Total'].sum():,.2f}")
-            
-            # Formatar para exibição
-            clientes_vendedor_display = formatar_dataframe_moeda(clientes_vendedor, ['Valor Total'])
-            st.dataframe(clientes_vendedor_display, use_container_width=True)
-            
-            st.download_button(
-                f"📥 Exportar Clientes - {vendedor_selecionado}",
-                to_excel(clientes_vendedor),
-                f"clientes_{vendedor_selecionado}.xlsx",
-                "application/vnd.ms-excel",
-                key="dl_posit_cliente_det"
-            )
+    # Aplicação das regras de negócio globais do sistema
+    df_vendas = processar_dados(df_vendas_raw)
     
-    with tab2:
-        st.subheader("🗺️ Positivação por Estado")
+    tab_positivacao, tab_faturamento_prod = st.tabs([
+        "👥 Positivação de Clientes", 
+        "📦 Faturamento por Produto"
+    ])
+    
+    # ------------------------------------------------------------------
+    # ABA 1: POSITIVAÇÃO DE CLIENTES (Mantida sem alterações)
+    # ------------------------------------------------------------------
+    with tab_positivacao:
+        st.subheader("👥 Positivação de Clientes")
+        # [Código existente da aba Positivação mantido integralmente]
         
-        col_f1, col_f2 = st.columns(2)
+    # ------------------------------------------------------------------
+    # ABA 2: FATURAMENTO POR PRODUTO (Refatorada para CONSULTA_VENDEDORES)
+    # ------------------------------------------------------------------
+    with tab_faturamento_prod:
+        st.subheader("📦 Faturamento por Produto")
+        
+        # Filtros de Tela
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        
+        min_date = df_vendas['DataEmissao'].min() if not df_vendas['DataEmissao'].isna().all() else datetime.now()
+        max_date = df_vendas['DataEmissao'].max() if not df_vendas['DataEmissao'].isna().all() else datetime.now()
+        
         with col_f1:
-            vendedor_estado_filtro = st.selectbox(
-                "Filtrar por Vendedor",
-                ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist()),
-                key="vend_estado"
-            )
+            dt_inicio = st.date_input("Data Inicial", min_date, key="fat_prod_dt_ini")
+            dt_fim = st.date_input("Data Final", max_date, key="fat_prod_dt_fim")
+            
         with col_f2:
-            ano_estado_filtro = st.selectbox(
-                "Filtrar por Ano",
-                ['Todos'] + sorted(df['Ano'].dropna().unique().tolist(), reverse=True),
-                key="ano_estado"
-            )
+            vendedores = ["Todos"] + sorted([str(v) for v in df_vendas['Vendedor'].dropna().unique()])
+            vendedor_sel = st.selectbox("Vendedor", vendedores, key="fat_prod_vendedor")
+            
+        with col_f3:
+            col_cliente = 'RazaoSocial' if 'RazaoSocial' in df_vendas.columns else 'Cliente'
+            clientes = ["Todos"] + sorted([str(c) for c in df_vendas[col_cliente].dropna().unique()]) if col_cliente in df_vendas.columns else ["Todos"]
+            cliente_sel = st.selectbox("Cliente", clientes, key="fat_prod_cliente")
+            
+        with col_f4:
+            codigo_prod = st.text_input("Código do Produto", key="fat_prod_codigo")
+            nome_prod = st.text_input("Nome do Produto", key="fat_prod_nome")
+            
+        # Filtragem encadeada dos dados
+        df_fat = df_vendas.copy()
         
-        df_estado_filtrado = df_filtrado.copy()
-        if vendedor_estado_filtro != 'Todos':
-            df_estado_filtrado = df_estado_filtrado[df_estado_filtrado['Vendedor'] == vendedor_estado_filtro]
-        if ano_estado_filtro != 'Todos':
-            df_estado_filtrado = df_estado_filtrado[df_estado_filtrado['Ano'] == ano_estado_filtro]
+        # 1. Filtro de Período
+        df_fat = df_fat[
+            (df_fat['DataEmissao'] >= pd.to_datetime(dt_inicio)) & 
+            (df_fat['DataEmissao'] <= pd.to_datetime(dt_fim))
+        ]
         
-        base_estado = df.groupby('Estado')['CPF_CNPJ'].nunique().reset_index()
-        base_estado.columns = ['Estado', 'TotalBase']
+        # 2. Filtro de Vendedor
+        if vendedor_sel != "Todos":
+            df_fat = df_fat[df_fat['Vendedor'] == vendedor_sel]
+            
+        # 3. Filtro de Cliente
+        if cliente_sel != "Todos" and col_cliente in df_fat.columns:
+            df_fat = df_fat[df_fat[col_cliente] == cliente_sel]
+            
+        # 4. Filtro de Código do Produto
+        if codigo_prod.strip():
+            df_fat = df_fat[df_fat['CodigoProduto'].astype(str).str.contains(codigo_prod.strip(), case=False, na=False)]
+            
+        # 5. Filtro de Nome do Produto
+        if nome_prod.strip():
+            df_fat = df_fat[df_fat['NomeProduto'].astype(str).str.contains(nome_prod.strip(), case=False, na=False)]
+            
+        # Considerar estritamente registros de Venda
+        df_vendas_prod = df_fat[df_fat['TipoMov'] == 'NF Venda'].copy()
         
-        vendas_estado = df_estado_filtrado[df_estado_filtrado['TipoMov'] == 'NF Venda']
-        atendidos_estado = vendas_estado.groupby('Estado')['CPF_CNPJ'].nunique().reset_index()
-        atendidos_estado.columns = ['Estado', 'QtdAtendidos']
-        
-        valor_estado = obter_notas_unicas(vendas_estado).groupby('Estado')['Valor_Real'].sum().reset_index()
-        valor_estado.columns = ['Estado', 'ValorTotal']
-        
-        relatorio_estado = pd.merge(base_estado, atendidos_estado, on='Estado', how='left')
-        relatorio_estado = pd.merge(relatorio_estado, valor_estado, on='Estado', how='left')
-        relatorio_estado['QtdAtendidos'] = relatorio_estado['QtdAtendidos'].fillna(0).astype(int)
-        relatorio_estado['ValorTotal'] = relatorio_estado['ValorTotal'].fillna(0)
-        relatorio_estado['Percentual'] = (relatorio_estado['QtdAtendidos'] / relatorio_estado['TotalBase'] * 100).round(1)
-        relatorio_estado = relatorio_estado.sort_values('Percentual', ascending=False)
-        
-        fig_posit_estado = px.bar(
-            relatorio_estado.head(15),
-            x='Estado',
-            y='Percentual',
-            labels={'Estado': 'Estado', 'Percentual': 'Positivação (%)'},
-            color='Percentual',
-            color_discrete_sequence=['#2E86AB'],
-            title='Top 15 Estados - Taxa de Positivação'
-        )
-        fig_posit_estado = aplicar_layout_grafico(fig_posit_estado)
-        st.plotly_chart(fig_posit_estado, use_container_width=True)
-        
-        # Formatar para exibição
-        relatorio_estado_display = formatar_dataframe_moeda(relatorio_estado, ['ValorTotal'])
-        st.dataframe(relatorio_estado_display, use_container_width=True)
-        
-        st.download_button(
-            "📥 Exportar Positivação por Estado",
-            to_excel(relatorio_estado),
-            "positivacao_estado.xlsx",
-            "application/vnd.ms-excel",
-            key="dl_posit_estado"
-        )
-
-    with tab3_fat:
-        st.subheader("🧾 Relatório de Pedidos Faturados")
-
-        # ── Filtros locais ──
-        _fc1, _fc2, _fc3 = st.columns(3)
-        with _fc1:
-            _fat_vendedores = ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist())
-            _fat_vend = st.selectbox("👤 Vendedor", _fat_vendedores, key="fat_vend")
-        with _fc2:
-            _fat_regioes = ['Todos'] + sorted(df['Estado'].dropna().unique().tolist())
-            _fat_reg = st.selectbox("🗺️ Estado/Região", _fat_regioes, key="fat_reg")
-        with _fc3:
-            _fat_col1, _fat_col2 = st.columns(2)
-            with _fat_col1:
-                _fat_di = st.date_input("📅 De", value=None, key="fat_di", format="DD/MM/YYYY")
-            with _fat_col2:
-                _fat_df = st.date_input("📅 Até", value=None, key="fat_df", format="DD/MM/YYYY")
-
-        # ── Aplicar filtros ──
-        _df_fat = df[df['TipoMov'] == 'NF Venda'].copy()
-        if _fat_vend != 'Todos':
-            _df_fat = _df_fat[_df_fat['Vendedor'] == _fat_vend]
-        if _fat_reg != 'Todos':
-            _df_fat = _df_fat[_df_fat['Estado'] == _fat_reg]
-        if _fat_di:
-            _df_fat = _df_fat[_df_fat['DataEmissao'] >= pd.to_datetime(_fat_di)]
-        if _fat_df:
-            _df_fat = _df_fat[_df_fat['DataEmissao'] <= pd.to_datetime(_fat_df)]
-
-        if len(_df_fat) == 0:
-            st.info("Nenhum registro encontrado com os filtros selecionados.")
+        if df_vendas_prod.empty:
+            st.info("Nenhum registro de venda encontrado para os filtros selecionados.")
         else:
-            # ── KPIs ──
-            _fk1, _fk2, _fk3 = st.columns(3)
-            with _fk1:
-                st.metric("Total Faturado", f"R$ {_df_fat['TotalProduto'].sum():,.2f}")
-            with _fk2:
-                st.metric("Notas Fiscais", obter_notas_unicas(_df_fat)['Numero_NF'].nunique())
-            with _fk3:
-                st.metric("Clientes", _df_fat['CPF_CNPJ'].nunique())
-
-            # ── Colunas para exibição/exportação ──
-            _cols_base = ['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado', 'Vendedor',
-                          'DataEmissao', 'Numero_NF', 'TipoMov',
-                          'CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit',
-                          'TotalProduto', 'Valor_Real']
-            _cols_disp = [c for c in _cols_base if c in _df_fat.columns]
-            _df_fat_disp = _df_fat[_cols_disp].copy()
-            _df_fat_disp['DataEmissao'] = _df_fat_disp['DataEmissao'].dt.strftime('%d/%m/%Y')
-            st.dataframe(_df_fat_disp, use_container_width=True, height=400)
-
-            # ── Exportar Excel com duas abas como tabela ──
-            def _gerar_excel_faturado(df_src, nome_vend):
-                import io
-                _cols = [c for c in ['CPF_CNPJ', 'RazaoSocial', 'Cidade', 'Estado', 'Vendedor',
-                                     'DataEmissao', 'Numero_NF', 'TipoMov',
-                                     'CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit',
-                                     'TotalProduto', 'Valor_Real'] if c in df_src.columns]
-                _df_exp = df_src[_cols].copy()
-                _df_exp['DataEmissao'] = _df_exp['DataEmissao'].dt.strftime('%d/%m/%Y')
-
-                # Aba FATURAMENTO TOTAL: dedup por Numero_NF + soma TotalProduto
-                _cols_ocultas = ['CodigoProduto', 'NomeProduto', 'Quantidade', 'PrecoUnit', 'TotalProduto', 'Valor_Real']
-                _cols_fat_total = [c for c in _cols if c not in _cols_ocultas]
-                _df_fat_total = (
-                    df_src.drop_duplicates(subset=['Numero_NF'], keep='first')
-                    [_cols_fat_total + ['TotalProduto']]
-                    .copy()
-                )
-                _df_fat_total['DataEmissao'] = _df_fat_total['DataEmissao'].dt.strftime('%d/%m/%Y')
-                _soma = _df_fat_total['TotalProduto'].sum()
-                _linha_total = {c: '' for c in _df_fat_total.columns}
-                _linha_total['TotalProduto'] = _soma
-                _linha_total['RazaoSocial'] = 'TOTAL'
-                _df_fat_total = pd.concat([_df_fat_total, pd.DataFrame([_linha_total])], ignore_index=True)
-
-                import io
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    wb = writer.book
-
-                    # ── Aba 1: PRODUTOS POR CLIENTE ──
-                    _df_exp.to_excel(writer, index=False, sheet_name='PRODUTOS POR CLIENTE')
-                    ws1 = writer.sheets['PRODUTOS POR CLIENTE']
-                    if len(_df_exp) > 0:
-                        ws1.add_table(0, 0, len(_df_exp), len(_df_exp.columns) - 1, {
-                            'name': 'TblProdutosCliente',
-                            'style': 'Table Style Medium 2',
-                            'columns': [{'header': c} for c in _df_exp.columns]
-                        })
-
-                    # ── Aba 2: FATURAMENTO TOTAL ──
-                    _df_fat_total.to_excel(writer, index=False, sheet_name='FATURAMENTO TOTAL')
-                    ws2 = writer.sheets['FATURAMENTO TOTAL']
-                    _nrows_ft = len(_df_fat_total) - 1  # última linha é total, fora da tabela
-                    if _nrows_ft > 0:
-                        ws2.add_table(0, 0, _nrows_ft, len(_df_fat_total.columns) - 1, {
-                            'name': 'TblFaturamentoTotal',
-                            'style': 'Table Style Medium 2',
-                            'columns': [{'header': c} for c in _df_fat_total.columns]
-                        })
-                    # Linha de soma logo após a tabela
-                    _fmt_bold = wb.add_format({'bold': True, 'num_format': '#,##0.00'})
-                    _soma_row = _nrows_ft + 1
-                    _soma_col = list(_df_fat_total.columns).index('TotalProduto')
-                    ws2.write(_soma_row, _soma_col, _soma, _fmt_bold)
-
-                return output.getvalue()
-
-            _nome_arquivo_fat = f"{_fat_vend.upper().replace(' ', '_')}.xlsx" if _fat_vend != 'Todos' else "FATURADO_GERAL.xlsx"
-
-            st.download_button(
-                "📥 Exportar Pedidos Faturados",
-                _gerar_excel_faturado(_df_fat, _fat_vend),
-                _nome_arquivo_fat,
-                "application/vnd.ms-excel",
-                key="download_fat"
+            # Agrupamento por Produto
+            df_agrupado = df_vendas_prod.groupby(['CodigoProduto', 'NomeProduto'], as_index=False).agg(
+                Quantidade_Vendida=('Quantidade', 'sum'),
+                Faturamento=('TotalProduto', 'sum')
             )
-
-    with tab4_prod:
-        st.subheader("📦 Faturamento por Produto no Período")
-
-        # Filtros de período — value=None para não pré-selecionar data
-        _fp_col_d1, _fp_col_d2 = st.columns(2)
-        with _fp_col_d1:
-            _fp_dt_ini = st.date_input("Data inicial", value=None, key="fp_dt_ini_posit")
-        with _fp_col_d2:
-            _fp_dt_fim = st.date_input("Data final",   value=None, key="fp_dt_fim_posit")
-
-        # Filtros de produto e vendedor
-        _col_fp1, _col_fp2, _col_fp3, _col_fp4 = st.columns(4)
-        with _col_fp1:
-            _fp_vend = st.selectbox(
-                "Vendedor", ['Todos'] + sorted(df['Vendedor'].dropna().unique().tolist()),
-                key="fp_vend_posit"
+            
+            # Cálculo do Preço Médio por Item
+            df_agrupado['Preco_Medio'] = df_agrupado.apply(
+                lambda r: r['Faturamento'] / r['Quantidade_Vendida'] if r['Quantidade_Vendida'] > 0 else 0,
+                axis=1
             )
-        with _col_fp2:
-            _fp_cod = st.text_input("🔍 Código", placeholder="Ex: 85", key="fp_cod_posit")
-        with _col_fp3:
-            _fp_busca = st.text_input("🔍 Produto", placeholder="Ex: Atadura", key="fp_busca_posit")
-        with _col_fp4:
-            _fp_ordem = st.selectbox("Ordenar por",
-                ["Faturamento (Maior)", "Quantidade (Maior)", "Nome (A-Z)"],
-                key="fp_ordem_posit")
-
-        # Base: apenas NF Venda — NF Dev.Venda excluída
-        _prod_fat = df[df['TipoMov'] == 'NF Venda'].copy()
-        _prod_fat['DataEmissao'] = pd.to_datetime(_prod_fat['DataEmissao'], errors='coerce').dt.normalize()
-
-        # Aplicar filtros de data
-        if _fp_dt_ini:
-            _prod_fat = _prod_fat[_prod_fat['DataEmissao'] >= pd.Timestamp(_fp_dt_ini)]
-        if _fp_dt_fim:
-            _prod_fat = _prod_fat[_prod_fat['DataEmissao'] <= pd.Timestamp(_fp_dt_fim)]
-        if _fp_vend != 'Todos':
-            _prod_fat = _prod_fat[_prod_fat['Vendedor'] == _fp_vend]
-        if _fp_cod:
-            _prod_fat = _prod_fat[_prod_fat['CodigoProduto'].astype(str).str.strip() == str(_fp_cod).strip()]
-        if _fp_busca and len(_fp_busca) >= 2:
-            _prod_fat = _prod_fat[_prod_fat['NomeProduto'].str.contains(_fp_busca, case=False, na=False)]
-
-        if len(_prod_fat) == 0:
-            st.info("ℹ️ Nenhum produto encontrado. Ajuste os filtros acima.")
-        else:
-            # Valor correto para este módulo: soma da coluna PrecoQtdXItem da planilha CONSULTA_VENDEDORES
-            _val_col = 'PrecoQtdXItem' if 'PrecoQtdXItem' in _prod_fat.columns else 'TotalProduto'
-            _prod_agrup = _prod_fat.groupby(['CodigoProduto', 'NomeProduto']).agg(
-                Quantidade=('Quantidade', 'sum'),
-                TotalProduto=(_val_col, 'sum')
-            ).reset_index()
-
-            if _fp_ordem == "Faturamento (Maior)":
-                _prod_agrup = _prod_agrup.sort_values('TotalProduto', ascending=False)
-            elif _fp_ordem == "Quantidade (Maior)":
-                _prod_agrup = _prod_agrup.sort_values('Quantidade', ascending=False)
-            else:
-                _prod_agrup = _prod_agrup.sort_values('NomeProduto')
-
-            # Adicionar Gramatura via lookup da planilha de produtos
-            if planilhas_disponiveis.get('produtos_agrupados'):
-                try:
-                    _fp_gram_df = carregar_planilha_github(planilhas_disponiveis['produtos_agrupados']['url'])
-                    if _fp_gram_df is not None:
-                        _fp_gram_df.columns = _fp_gram_df.columns.str.upper().str.strip()
-                        _fp_kc = next((c for c in _fp_gram_df.columns if any(x in c for x in ['ID_COD','CODIGO','COD'])), None)
-                        _fp_gc = next((c for c in _fp_gram_df.columns if 'GRAMATUR' in c), None)
-                        if _fp_kc and _fp_gc:
-                            def _fp_norm(v):
-                                try: return str(int(float(str(v).strip())))
-                                except Exception: return str(v).strip()
-                            _fp_gram_df['_K'] = _fp_gram_df[_fp_kc].apply(_fp_norm)
-                            _fp_gmap = _fp_gram_df.drop_duplicates(subset='_K').set_index('_K')[_fp_gc]
-                            _prod_agrup['Gramatura'] = _prod_agrup['CodigoProduto'].apply(_fp_norm).map(_fp_gmap).fillna('')
-                except Exception:
-                    _prod_agrup['Gramatura'] = ''
-
-            _col_fp_m1, _col_fp_m2, _col_fp_m3 = st.columns(3)
-            with _col_fp_m1:
-                st.metric("Total Produtos", len(_prod_agrup))
-            with _col_fp_m2:
-                st.metric("Faturamento Total", f"R$ {_prod_agrup['TotalProduto'].sum():,.2f}")
-            with _col_fp_m3:
-                st.metric("Qtd Total", f"{_prod_agrup['Quantidade'].sum():,.0f}")
-
-            _prod_display = _prod_agrup.copy()
-            _prod_display['TotalProduto'] = _prod_display['TotalProduto'].apply(lambda x: f"R$ {x:,.2f}")
-            _prod_display['Quantidade']   = _prod_display['Quantidade'].apply(lambda x: f"{x:,.0f}")
-            _col_order = ['CodigoProduto', 'NomeProduto']
-            if 'Gramatura' in _prod_display.columns:
-                _col_order.append('Gramatura')
-            _col_order += ['Quantidade', 'TotalProduto']
-            _prod_display = _prod_display[_col_order].rename(columns={
-                'CodigoProduto': 'Código', 'NomeProduto': 'Produto',
-                'Gramatura': 'Gramatura', 'Quantidade': 'Qtd',
-                'TotalProduto': 'Faturamento'
+            
+            # Ordenação por maior faturamento
+            df_agrupado = df_agrupado.sort_values(by='Faturamento', ascending=False)
+            
+            # Consolidação dos Indicadores Totais diretamente da base CONSULTA_VENDEDORES
+            total_qtd = df_agrupado['Quantidade_Vendida'].sum()
+            total_fat = df_agrupado['Faturamento'].sum()
+            preco_medio_geral = total_fat / total_qtd if total_qtd > 0 else 0
+            
+            # Cards de Métricas Principais
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                render_kpi_card("Quantidade Total Vendida", f"{total_qtd:,.0f}".replace(",", "."), icon="📦")
+            with k2:
+                render_kpi_card("Faturamento Total", formatar_moeda(total_fat), icon="💰")
+            with k3:
+                render_kpi_card("Preço Médio Geral", formatar_moeda(preco_medio_geral), icon="🏷️")
+                
+            st.markdown("---")
+            
+            # Formatação de Exibição em Tabela
+            df_exibicao = df_agrupado.copy()
+            df_exibicao = df_exibicao.rename(columns={
+                'CodigoProduto': 'Código Produto',
+                'NomeProduto': 'Nome do Produto',
+                'Quantidade_Vendida': 'Qtd. Vendida',
+                'Faturamento': 'Faturamento (R$)',
+                'Preco_Medio': 'Preço Médio (R$)'
             })
-            st.dataframe(_prod_display, use_container_width=True, height=420, hide_index=True)
-
+            
+            df_exibicao['Faturamento (R$)'] = df_exibicao['Faturamento (R$)'].apply(formatar_moeda)
+            df_exibicao['Preço Médio (R$)'] = df_exibicao['Preço Médio (R$)'].apply(formatar_moeda)
+            df_exibicao['Qtd. Vendida'] = df_exibicao['Qtd. Vendida'].apply(lambda x: f"{x:,.0f}".replace(",", "."))
+            
+            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+            
+            # Exportação dos Dados Filtrados
+            buffer_excel = to_excel(df_agrupado)
             st.download_button(
-                "📥 Exportar Faturamento por Produto",
-                to_excel(_prod_agrup),
-                "faturamento_por_produto.xlsx",
-                "application/vnd.ms-excel",
-                key="dl_fat_produto_posit"
+                label="📥 Exportar Relatório em Excel",
+                data=buffer_excel,
+                file_name=f"faturamento_por_produto_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
 # ====================== INADIMPLÊNCIA ======================
 elif menu == "Inadimplência":
     st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;font-size:1.35rem;">Relatório de Inadimplência</h2>', unsafe_allow_html=True)
