@@ -768,9 +768,6 @@ def listar_planilhas_github():
             'pedidos_pendentes': None,
             'tabela_ne': None,
             'contrato': None,
-            'comissoes_vendas': None,
-            'boletos_emitidos': None,
-            'boletos_pagos': None,
             'todas': []
         }
         
@@ -810,15 +807,6 @@ def listar_planilhas_github():
                 if 'CONTRATO' in content.name.upper() and 'CONSULTA' in content.name.upper():
                     planilhas['contrato'] = info
 
-                # Identificar planilhas do módulo Comissões (nome tem sufixo de
-                # data que muda a cada exportação — reconhece só pelo início)
-                if content.name.upper().startswith('COMISSOES_VENDAS'):
-                    planilhas['comissoes_vendas'] = info
-                if content.name.upper().startswith('BOLETOS_EMITIDOS'):
-                    planilhas['boletos_emitidos'] = info
-                if content.name.upper().startswith('BOLETOS_PAGOS'):
-                    planilhas['boletos_pagos'] = info
-
         
         if not planilhas['todas']:
             st.warning(f"⚠️ Nenhuma planilha Excel encontrada na pasta '{GITHUB_FOLDER}'")
@@ -827,7 +815,7 @@ def listar_planilhas_github():
     except Exception as e:
         st.error(f"❌ Erro ao conectar ao GitHub: {str(e)}")
         st.info(f"💡 Verificando: {GITHUB_REPO}/{GITHUB_FOLDER}")
-        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'tabela_ne': None, 'contrato': None, 'comissoes_vendas': None, 'boletos_emitidos': None, 'boletos_pagos': None, 'todas': []}
+        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'tabela_ne': None, 'contrato': None, 'todas': []}
 
 @st.cache_data(ttl=3600)
 def carregar_planilha_github(url):
@@ -9942,19 +9930,9 @@ elif menu == "Comissões":
         base, parcela = m.group(1), m.group(2)
         return base[-6:].zfill(6), parcela
 
-    @st.cache_data(ttl=3600)
-    def _com_carregar(url_com, url_emit, url_pago):
-        erros = []
-        df_com = carregar_planilha_github(url_com) if url_com else None
-        df_emit = carregar_planilha_github(url_emit) if url_emit else None
-        df_pago = carregar_planilha_github(url_pago) if url_pago else None
-        if df_com is None or df_com.empty:
-            erros.append("Não consegui carregar a planilha de comissões (COMISSOES_VENDAS).")
-        if (df_emit is None or df_emit.empty) and (df_pago is None or df_pago.empty):
-            erros.append("Não consegui carregar nenhuma planilha de boletos (EMITIDOS/PAGOS).")
-        if erros:
-            return None, None, erros
-
+    def _com_processar(df_com, df_emit, df_pago):
+        """Recebe os 3 DataFrames já lidos dos uploads e devolve
+        (com_agg, bol_agg). Não lê nada do GitHub."""
         # ── Comissões: agrupa por Documento+Vendedor (uma venda tem várias
         # linhas de produto) e calcula a chave de vínculo com o boleto ──
         com = df_com.dropna(subset=["Documento"]).copy()
@@ -9985,27 +9963,35 @@ elif menu == "Comissões":
         else:
             bol_agg = pd.DataFrame(columns=["_chave", "_parcela", "Funcionario",
                                              "DtEmissao", "DtBaixa", "VrLiquido"])
-        return com_agg, bol_agg, []
+        return com_agg, bol_agg
 
-    _com_urls = listar_planilhas_github()
-    _url_com = (_com_urls.get("comissoes_vendas") or {}).get("url")
-    _url_emit = (_com_urls.get("boletos_emitidos") or {}).get("url")
-    _url_pago = (_com_urls.get("boletos_pagos") or {}).get("url")
+    # ── Upload manual dos 3 arquivos (nada é lido do GitHub neste módulo) ──
+    st.markdown("#### 📤 Envie as planilhas do período")
+    _up_com = st.file_uploader("Comissões (COMISSOES_VENDAS)",
+                                type=["xlsx", "xls"], key="com_up_comissoes")
+    _up_emit = st.file_uploader("Boletos Emitidos (BOLETOS_EMITIDOS)",
+                                 type=["xlsx", "xls"], key="com_up_emitidos")
+    _up_pago = st.file_uploader("Boletos Pagos (BOLETOS_PAGOS)",
+                                 type=["xlsx", "xls"], key="com_up_pagos")
 
-    if not _url_com:
-        st.error("❌ Não encontrei nenhum arquivo começando com **COMISSOES_VENDAS** "
-                  "na pasta de dados do GitHub.")
-        st.stop()
-    if not _url_emit and not _url_pago:
-        st.error("❌ Não encontrei arquivos **BOLETOS_EMITIDOS** nem **BOLETOS_PAGOS** "
-                  "na pasta de dados do GitHub.")
+    _faltando = []
+    if _up_com is None:
+        _faltando.append("Comissões")
+    if _up_emit is None and _up_pago is None:
+        _faltando.append("Boletos (Emitidos e/ou Pagos)")
+    if _faltando:
+        st.info("Envie os arquivos acima para calcular: " + ", ".join(_faltando))
         st.stop()
 
-    _com_agg, _bol_agg, _com_erros = _com_carregar(_url_com, _url_emit, _url_pago)
-    if _com_erros:
-        for _e in _com_erros:
-            st.error(f"❌ {_e}")
+    try:
+        _df_com_raw = pd.read_excel(_up_com)
+        _df_emit_raw = pd.read_excel(_up_emit) if _up_emit is not None else None
+        _df_pago_raw = pd.read_excel(_up_pago) if _up_pago is not None else None
+    except Exception as _e:
+        st.error(f"❌ Não consegui ler um dos arquivos enviados: {_e}")
         st.stop()
+
+    _com_agg, _bol_agg = _com_processar(_df_com_raw, _df_emit_raw, _df_pago_raw)
 
     # ── Reconciliação: liga cada comissão às parcelas do boleto, rateia o
     # valor entre elas e aplica a regra de liberação de cada representante ──
