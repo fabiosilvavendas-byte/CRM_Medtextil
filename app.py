@@ -768,6 +768,9 @@ def listar_planilhas_github():
             'pedidos_pendentes': None,
             'tabela_ne': None,
             'contrato': None,
+            'comissoes_vendas': None,
+            'boletos_emitidos': None,
+            'boletos_pagos': None,
             'todas': []
         }
         
@@ -807,6 +810,15 @@ def listar_planilhas_github():
                 if 'CONTRATO' in content.name.upper() and 'CONSULTA' in content.name.upper():
                     planilhas['contrato'] = info
 
+                # Identificar planilhas do módulo Comissões (nome tem sufixo de
+                # data que muda a cada exportação — reconhece só pelo início)
+                if content.name.upper().startswith('COMISSOES_VENDAS'):
+                    planilhas['comissoes_vendas'] = info
+                if content.name.upper().startswith('BOLETOS_EMITIDOS'):
+                    planilhas['boletos_emitidos'] = info
+                if content.name.upper().startswith('BOLETOS_PAGOS'):
+                    planilhas['boletos_pagos'] = info
+
         
         if not planilhas['todas']:
             st.warning(f"⚠️ Nenhuma planilha Excel encontrada na pasta '{GITHUB_FOLDER}'")
@@ -815,7 +827,7 @@ def listar_planilhas_github():
     except Exception as e:
         st.error(f"❌ Erro ao conectar ao GitHub: {str(e)}")
         st.info(f"💡 Verificando: {GITHUB_REPO}/{GITHUB_FOLDER}")
-        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'tabela_ne': None, 'contrato': None, 'todas': []}
+        return {'vendas': None, 'inadimplencia': None, 'vendas_produto': None, 'produtos_agrupados': None, 'pedidos_pendentes': None, 'tabela_ne': None, 'contrato': None, 'comissoes_vendas': None, 'boletos_emitidos': None, 'boletos_pagos': None, 'todas': []}
 
 @st.cache_data(ttl=3600)
 def carregar_planilha_github(url):
@@ -844,13 +856,13 @@ _MODULOS_ADMIN = [
     "Dashboard", "Positivação", "Inadimplência", "Clientes sem Compra",
     "Histórico", "Pedidos Pendentes", "Rankings",
     "Performance de Vendedores", "Consulta Clientes",
-    "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos",
+    "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos", "Comissões",
 ]
 _MODULOS_GESTOR = [
     "Dashboard", "Positivação", "Inadimplência", "Clientes sem Compra",
     "Histórico", "Pedidos Pendentes", "Rankings",
     "Performance de Vendedores", "Consulta Clientes",
-    "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos",
+    "Meus Pedidos", "Fila de Aprovação", "Todos os Pedidos", "Comissões",
 ]
 _MODULOS_VENDEDOR = [
     "Histórico", "Consulta Clientes", "Meus Pedidos",
@@ -2024,6 +2036,7 @@ _CATEGORIAS_NAV = {
     "RELATÓRIOS E ATENÇÃO": [
         "Pedidos Pendentes",
         "Inadimplência",
+        "Comissões",
     ],
     "CONSULTAS RÁPIDAS": [
         "Tabela de Preços",
@@ -2048,6 +2061,7 @@ _ICONES_NAV = {
     "Novo Pedido":"📝","Tabela de Preços":"＄","Histórico do Cliente":"◷",
     "Novo Pedido ERP":"🆕","Meus Pedidos":"📋",
     "Fila de Aprovação":"⏳","Todos os Pedidos":"🗂️",
+    "Comissões":"💵",
 }
 
 if 'menu_option' not in st.session_state:
@@ -2182,6 +2196,9 @@ with st.sidebar:
                     _raw_inad = carregar_planilha_github(planilhas_disponiveis['inadimplencia']['url'])
                     if _raw_inad is not None:
                         _df_inad_sem = processar_inadimplencia(_raw_inad)
+                        if 'NumeroDoc' not in _df_inad_sem.columns:
+                            _possiveis_nomes_sem = [col for col in _df_inad_sem.columns if 'DOC' in col.upper() or 'NUMERO' in col.upper()]
+                            _df_inad_sem['NumeroDoc'] = _df_inad_sem[_possiveis_nomes_sem[0]] if _possiveis_nomes_sem else ''
 
                 # ── Carregar pedidos pendentes ──
                 _df_pend_sem = None
@@ -3147,8 +3164,9 @@ elif menu == "Positivação":
                 ["Faturamento (Maior)", "Quantidade (Maior)", "Nome (A-Z)"],
                 key="fp_ordem_posit")
 
-        # Base: apenas NF Venda — NF Dev.Venda excluída
-        _prod_fat = df[df['TipoMov'] == 'NF Venda'].copy()
+        # Base: NF Venda e NF Dev.Venda (devolução é descontada por produto,
+        # mesma regra do "Faturamento Líquido" usado nos demais relatórios do sistema)
+        _prod_fat = df[df['TipoMov'].isin(['NF Venda', 'NF Dev.Venda'])].copy()
         _prod_fat['DataEmissao'] = pd.to_datetime(_prod_fat['DataEmissao'], errors='coerce').dt.normalize()
 
         # Aplicar filtros de data
@@ -3167,10 +3185,18 @@ elif menu == "Positivação":
             st.info("ℹ️ Nenhum produto encontrado. Ajuste os filtros acima.")
         else:
             # Fonte de dados: exclusivamente CONSULTA_VENDEDORES.xlsx (df).
-            # Quantidade Vendida = soma de Quantidade | Faturamento = soma de TotalProduto
+            # ValorItem = PrecoUnit * Quantidade (TotalProduto é o total da NOTA inteira,
+            # repetido em cada linha de produto — somá-lo direto infla o faturamento
+            # sempre que a nota tem mais de um produto). Mesmo padrão já usado em
+            # Performance de Vendedores > Resultado por Produto.
+            # Sinal negativo para NF Dev.Venda, para descontar devoluções do produto
+            # (mesma regra de sinal já usada em Valor_Real).
+            _sinal = _prod_fat['TipoMov'].apply(lambda t: 1 if t == 'NF Venda' else -1)
+            _prod_fat['ValorItem'] = _prod_fat['PrecoUnit'] * _prod_fat['Quantidade'] * _sinal
+            _prod_fat['QtdItem'] = _prod_fat['Quantidade'] * _sinal
             _prod_agrup = _prod_fat.groupby(['CodigoProduto', 'NomeProduto']).agg(
-                Quantidade=('Quantidade', 'sum'),
-                TotalProduto=('TotalProduto', 'sum')
+                Quantidade=('QtdItem', 'sum'),
+                TotalProduto=('ValorItem', 'sum')
             ).reset_index()
 
             if _fp_ordem == "Faturamento (Maior)":
@@ -5020,29 +5046,118 @@ elif menu == "Pedidos Pendentes":
     st.caption("Converte unidades pendentes em caixas e estima datas de conclusão com base na capacidade diária de cada produto.")
 
     import math
+    import re as _re_prod
+    import unicodedata as _unicodedata_prod
     from datetime import date, timedelta
 
-    # Capacidade produtiva por produto (caixas/dia) — match por substring
-    CAPACIDADE_PROD = {
-        "CAMPO OPERATORIO 45X50": 80,
-        "CAMPO OPERATÓRIO 25X28 C2": 23,
-        "CAMPO OPERATÓRIO 25X28 C5": 20,
-        "GAZE NÃO ESTERIL": 17,
-        "GAZE ESTERIL": 80,
-        "ATADURA FARMA": 18,
-        "ATADURA CONJUGADA": 15,
-        "GAZE CIRCULAR": 50,
+    # ====================== CAPACIDADE PRODUTIVA — VARIÁVEIS EDITÁVEIS ======================
+    # Taxa unitária de cada linha é regra de negócio fixa (validada com a diretoria).
+    # Só o número de pessoas/máquinas (e o modo da Gaze Estéril) é editável e fica salvo.
+    TAXAS_PRODUCAO = {
+        'campo_45x50':        {'nome': 'Campo 45x50',                             'recurso': 'pessoas',  'taxa_unit': 25.0,   'default': 7, 'unidade_cap': 'cx'},
+        'campo_25x28_c5':     {'nome': 'Campo 25x28 c/5',                          'recurso': 'pessoas',  'taxa_unit': 37 / 7, 'default': 7, 'unidade_cap': 'cx'},
+        'campo_25x28_c2':     {'nome': 'Campo 25x28 c/2',                          'recurso': 'pessoas',  'taxa_unit': 3.5,    'default': 2, 'unidade_cap': 'cx'},
+        'atadura_farma':      {'nome': 'Atadura Farma',                            'recurso': 'maquinas', 'taxa_unit': 15.0,   'default': 2, 'unidade_cap': 'fd'},
+        'atadura_hospitalar': {'nome': 'Atadura Hospitalar',                       'recurso': 'pessoas',  'taxa_unit': 10.0,   'default': 2, 'unidade_cap': 'cx'},
+        'gaze_pacote_geral':  {'nome': 'Gaze não estéril pacote',                  'recurso': 'pessoas',  'taxa_unit': 10.0,   'default': 3, 'unidade_cap': 'cx'},
+        'gaze_pacote_105gr':  {'nome': 'Gaze não estéril pacote 105gr (09 fios)',  'recurso': 'pessoas',  'taxa_unit': 8.0,    'default': 3, 'unidade_cap': 'cx'},
+        'gaze_esteril_pct10': {'nome': 'Gaze estéril pct 10',                      'recurso': 'maquinas_2tipos',
+                                'taxa_grande': 67.5, 'taxa_pequena': 32.5,
+                                'default_grande': 1, 'default_pequena': 1, 'unidade_cap': 'cx'},
+        'gaze_rolo_queijo':   {'nome': 'Gaze em rolo (queijo/circular)',           'recurso': 'pessoas',  'taxa_unit': 29.0,   'default': 1, 'unidade_cap': 'cx'},
+        'gaze_esteril_50x91': {'nome': 'Gaze estéril 11 Fios (50x91)',             'recurso': 'pessoas',  'taxa_unit': 2.0,    'default': 1, 'unidade_cap': 'cx'},
     }
+    FARDO_PARA_CAIXA = 2  # 1 fardo de Atadura Farma = 2 caixas (para comparar com CAIXAS_NECESSARIAS)
 
-    def identificar_capacidade(descricao):
-        """Match por substring, case-insensitive."""
-        if not descricao or str(descricao).lower() == 'nan':
-            return None, "SEM CAPACIDADE"
-        desc_upper = str(descricao).upper().strip()
-        for chave, cap in CAPACIDADE_PROD.items():
-            if chave.upper() in desc_upper:
-                return cap, chave
-        return None, "SEM CAPACIDADE"
+    def carregar_config_producao():
+        """Lê pessoas/máquinas salvos no Supabase; usa o default de TAXAS_PRODUCAO se não houver registro."""
+        cfg = {}
+        for k, v in TAXAS_PRODUCAO.items():
+            if v['recurso'] == 'maquinas_2tipos':
+                cfg[k] = {'grande': v['default_grande'], 'pequena': v['default_pequena']}
+            else:
+                cfg[k] = v['default']
+        if supa_disponivel():
+            for reg in supa_select("producao_capacidade"):
+                linha = reg.get('linha')
+                if linha in cfg:
+                    val = reg.get('valor')
+                    if TAXAS_PRODUCAO[linha]['recurso'] == 'maquinas_2tipos':
+                        try:
+                            cfg[linha] = json.loads(val)
+                        except Exception:
+                            continue
+                    else:
+                        try:
+                            cfg[linha] = int(float(val))
+                        except Exception:
+                            continue
+        return cfg
+
+    def salvar_config_producao(linha, valor, usuario_nome=None):
+        """Salva (upsert) uma variável de capacidade no Supabase."""
+        if not supa_disponivel():
+            return False
+        existentes = supa_select("producao_capacidade", filtros={"linha": linha})
+        valor_txt = json.dumps(valor) if isinstance(valor, dict) else str(valor)
+        dados = {
+            "linha": linha, "valor": valor_txt,
+            "atualizado_em": datetime.now().isoformat(),
+            "atualizado_por": usuario_nome or "",
+        }
+        if existentes:
+            return supa_update("producao_capacidade", linha, dados, id_col="linha")
+        return supa_insert("producao_capacidade", dados) is not None
+
+    def capacidade_dia(linha_key, cfg):
+        """Capacidade diária na unidade nativa da linha (cx, exceto Atadura Farma que é fd)."""
+        info = TAXAS_PRODUCAO[linha_key]
+        if info['recurso'] == 'maquinas_2tipos':
+            valores = cfg.get(linha_key, {'grande': info['default_grande'], 'pequena': info['default_pequena']})
+            return (float(valores.get('grande', 0)) * info['taxa_grande']
+                    + float(valores.get('pequena', 0)) * info['taxa_pequena'])
+        return float(cfg.get(linha_key, info['default'])) * info['taxa_unit']
+
+    def identificar_linha_producao(descricao, gramatura=None):
+        """
+        Identifica a linha de produção (Módulo A) a partir da descrição do produto.
+        Retorna a chave de TAXAS_PRODUCAO, ou None se o produto está fora do escopo
+        definido (ex.: Gaze Estéril 11 Fios / 50x91).
+        """
+        d = _unicodedata_prod.normalize('NFKD', str(descricao or '')).encode('ascii', 'ignore').decode('ascii').upper()
+
+        if 'ATADURA' in d:
+            return 'atadura_hospitalar' if 'HOSPITALAR' in d else 'atadura_farma'
+
+        if any(x in d for x in ['CAMPO OPERATORIO', 'CAMPO OP']):
+            if '45X50' in d or '45 X 50' in d:
+                return 'campo_45x50'
+            if '25X28' in d or '25 X 28' in d:
+                if 'PCT 2' in d or _re_prod.search(r'\bC\s*2\b', d):
+                    return 'campo_25x28_c2'
+                return 'campo_25x28_c5'
+            return None
+
+        if 'CIRCULAR' in d or 'QUEIJO' in d:
+            return 'gaze_rolo_queijo'
+
+        if 'NAO ESTERIL' in d or 'PACOTE' in d:
+            gram = str(gramatura or '').replace(',', '.').strip()
+            fios_09 = bool(_re_prod.search(r'\b0?9\s*F', d))
+            try:
+                is_105 = abs(float(gram) - 105) < 1
+            except Exception:
+                is_105 = False
+            return 'gaze_pacote_105gr' if (is_105 and fios_09) else 'gaze_pacote_geral'
+
+        if 'ESTERIL' in d:
+            if 'PCT 10' in d or _re_prod.search(r'\b13\s*F', d):
+                return 'gaze_esteril_pct10'
+            if '50X91' in d or '50 X 91' in d or _re_prod.search(r'\b11\s*F', d):
+                return 'gaze_esteril_50x91'
+            return None
+
+        return None
 
     def adicionar_dias_uteis(data_inicio, dias):
         """Avança N dias úteis (seg–sáb), ignorando domingo."""
@@ -5053,6 +5168,58 @@ elif menu == "Pedidos Pendentes":
             if atual.weekday() != 6:  # 6 = domingo
                 contados += 1
         return atual
+
+    def adicionar_dias_semana(data_inicio, dias):
+        """Avança N dias, contando só segunda–sexta (usado por linhas que não produzem aos sábados)."""
+        atual = data_inicio
+        contados = 0
+        while contados < dias:
+            atual += timedelta(days=1)
+            if atual.weekday() < 5:  # 0=segunda ... 4=sexta
+                contados += 1
+        return atual
+
+    LINHAS_APENAS_DIAS_SEMANA = {'campo_45x50'}  # produção não roda aos sábados nessa linha
+
+    # ── Painel de variáveis de capacidade (pessoas/máquinas/modo) ──────────
+    st.markdown("**⚙️ Variáveis de Capacidade Produtiva**")
+    st.caption("Ajuste pessoas ou máquinas por linha — a previsão abaixo recalcula na hora.")
+
+    _cfg_prod = carregar_config_producao()
+    _cfg_editado = {}
+    _linhas_prod = list(TAXAS_PRODUCAO.keys())
+    _cols_prod = st.columns(3)
+    for _i, _linha_key in enumerate(_linhas_prod):
+        _info = TAXAS_PRODUCAO[_linha_key]
+        with _cols_prod[_i % 3]:
+            if _info['recurso'] == 'maquinas_2tipos':
+                _val_atual = _cfg_prod.get(_linha_key, {'grande': _info['default_grande'], 'pequena': _info['default_pequena']})
+                _qtd_g = st.number_input(
+                    f"{_info['nome']} (máq. grande)", min_value=0,
+                    value=int(_val_atual.get('grande', _info['default_grande'])), step=1, key=f"cfg_prod_{_linha_key}_grande"
+                )
+                _qtd_p = st.number_input(
+                    f"{_info['nome']} (máq. pequena)", min_value=0,
+                    value=int(_val_atual.get('pequena', _info['default_pequena'])), step=1, key=f"cfg_prod_{_linha_key}_pequena"
+                )
+                _cfg_editado[_linha_key] = {'grande': _qtd_g, 'pequena': _qtd_p}
+            else:
+                _cfg_editado[_linha_key] = st.number_input(
+                    f"{_info['nome']} ({_info['recurso']})",
+                    min_value=0, value=int(_cfg_prod[_linha_key]), step=1, key=f"cfg_prod_{_linha_key}"
+                )
+
+    if st.button("💾 Salvar variáveis de produção", key="salvar_cfg_prod"):
+        _usuario_nome_cfg = st.session_state.get('usuario_nome', '')
+        _ok_salvar = all(
+            salvar_config_producao(k, v, _usuario_nome_cfg) for k, v in _cfg_editado.items()
+        )
+        if _ok_salvar:
+            st.success("✅ Variáveis de produção salvas.")
+        else:
+            st.warning("⚠️ Não foi possível salvar no Supabase (verifique a conexão). Os valores acima continuam valendo só para esta sessão.")
+
+    st.markdown("---")
 
     # Carregar produtos_agrupados para obter CX_EMB e PRECO via ID_COD
     _df_prod_prev = None
@@ -5080,6 +5247,7 @@ elif menu == "Pedidos Pendentes":
         _cx_col    = next((c for c in _df_prod_prev.columns if 'CX_EMB' in c), None)
         _preco_col = next((c for c in _df_prod_prev.columns if 'PRECO' in c or 'PREÇO' in c), None)
         _desc_col  = next((c for c in _df_prod_prev.columns if 'DESCRI' in c or 'GRUPO' in c), None)
+        _gram_col  = next((c for c in _df_prod_prev.columns if 'GRAMATUR' in c), None)
 
         if not _cx_col or not _preco_col:
             st.warning(f"⚠️ Colunas CX_EMB ou PRECO não encontradas. Colunas disponíveis: {_df_prod_prev.columns.tolist()}")
@@ -5089,7 +5257,7 @@ elif menu == "Pedidos Pendentes":
             _df_base['COD_N'] = _df_base['CodigoProduto'].apply(_norm_cod)
 
             # Merge com produtos
-            _cols_merge = ['ID_COD_N', _cx_col, _preco_col] + ([_desc_col] if _desc_col else [])
+            _cols_merge = ['ID_COD_N', _cx_col, _preco_col] + ([_desc_col] if _desc_col else []) + ([_gram_col] if _gram_col else [])
             _df_prod_merge = _df_prod_prev[_cols_merge].drop_duplicates(subset=['ID_COD_N'])
             _df_merge = _df_base.merge(
                 _df_prod_merge,
@@ -5098,11 +5266,34 @@ elif menu == "Pedidos Pendentes":
                 how='left'
             )
 
+            # Tabela de embarque (unidades por caixa) da Atadura Farma — validada com foto da MED MAIS,
+            # usada porque a coluna CX_EMB de Produtos_Agrupados não está preenchida para esses códigos.
+            # Larguras 1,00 e 1,20 usam o mesmo fator; larguras 1,50 e 1,80 usam o mesmo fator (regra confirmada).
+            _EMBARQUE_ATADURA_FARMA = {
+                'A': {8: 125, 10: 110, 12: 85, 15: 80, 20: 70, 30: 45},   # larguras 1,00 / 1,20
+                'B': {8: 110, 10: 90, 12: 80, 15: 70, 20: 60, 30: 35},    # larguras 1,50 / 1,80
+            }
+
+            def _embarque_atadura_farma(descricao):
+                m = _re_prod.search(r'(\d+)\s*X\s*1,(\d+)', str(descricao or '').upper())
+                if not m:
+                    return None
+                comprimento = int(m.group(1))
+                largura = m.group(2)
+                grupo = 'A' if largura in ('00', '20') else 'B' if largura in ('50', '80') else None
+                if grupo is None:
+                    return None
+                return _EMBARQUE_ATADURA_FARMA[grupo].get(comprimento)
+
             # Converter unidades → caixas (ceil, evitar div/0)
             def _calc_caixas(row):
                 try:
-                    cx = float(row[_cx_col])
-                    if cx <= 0 or pd.isna(cx):
+                    _desc_linha = str(row.get('Descricao', '')).upper()
+                    if 'ATADURA' in _desc_linha and 'HOSPITALAR' not in _desc_linha:
+                        cx = _embarque_atadura_farma(_desc_linha)
+                    else:
+                        cx = float(row[_cx_col])
+                    if cx is None or cx <= 0 or pd.isna(cx):
                         return None
                     return math.ceil(float(row['QtdPendente']) / cx)
                 except Exception:
@@ -5110,32 +5301,91 @@ elif menu == "Pedidos Pendentes":
 
             _df_merge['CAIXAS_NECESSARIAS'] = _df_merge.apply(_calc_caixas, axis=1)
 
-            # Identificar capacidade produtiva
-            _desc_vals = _df_merge[_desc_col].tolist() if _desc_col else [''] * len(_df_merge)
-            _caps = [identificar_capacidade(d) for d in _desc_vals]
-            _df_merge['CAPACIDADE_DIA']  = [c[0] for c in _caps]
-            _df_merge['GRUPO_PROD']      = [c[1] for c in _caps]
+            # Identificar linha de produção e capacidade diária dinâmica (pessoas/máquinas configurados acima)
+            def _linha_e_capacidade(row):
+                desc_ref = row.get(_desc_col, '') if _desc_col else ''
+                gram_ref = row.get(_gram_col, '') if _gram_col else ''
+                _desc_pedido = row.get('Descricao', '')
+                linha_key = identificar_linha_producao(_desc_pedido if _desc_pedido else desc_ref, gram_ref)
+                if linha_key is None:
+                    return pd.Series([None, None, 'SEM CAPACIDADE'])
+                cap = capacidade_dia(linha_key, _cfg_editado)
+                if TAXAS_PRODUCAO[linha_key]['unidade_cap'] == 'fd':
+                    cap = cap * FARDO_PARA_CAIXA  # converte fardos/dia → caixas/dia para comparar com CAIXAS_NECESSARIAS
+                return pd.Series([linha_key, cap if cap > 0 else None, TAXAS_PRODUCAO[linha_key]['nome']])
 
-            # Calcular dias de produção (ceil, paralelo por produto)
-            def _calc_dias(row):
-                try:
-                    if row['CAPACIDADE_DIA'] is None or row['CAIXAS_NECESSARIAS'] is None:
-                        return None
-                    return math.ceil(row['CAIXAS_NECESSARIAS'] / row['CAPACIDADE_DIA'])
-                except Exception:
-                    return None
+            _df_merge[['LINHA_KEY', 'CAPACIDADE_DIA', 'GRUPO_PROD']] = _df_merge.apply(_linha_e_capacidade, axis=1)
+            _df_merge['PEDIDO_ITEM_ID'] = _df_merge['NumeroPedido'].astype(str) + '||' + _df_merge['CodigoProduto'].astype(str)
 
-            _df_merge['DIAS_PRODUCAO'] = _df_merge.apply(_calc_dias, axis=1)
+            # ── Fila de priorização por linha de produção ────────────────
+            def carregar_prioridades():
+                """Lê a ordem manual salva por linha. Retorna {linha_key: [pedido_item_id, ...]}."""
+                prioridades = {}
+                if supa_disponivel():
+                    for reg in supa_select("producao_prioridade"):
+                        try:
+                            prioridades[reg['linha']] = json.loads(reg.get('ordem') or '[]')
+                        except Exception:
+                            prioridades[reg['linha']] = []
+                return prioridades
 
-            # Calcular data prevista
+            def salvar_prioridade(linha_key, ordem_lista, usuario_nome=None):
+                if not supa_disponivel():
+                    return False
+                existentes = supa_select("producao_prioridade", filtros={"linha": linha_key})
+                dados = {
+                    "linha": linha_key, "ordem": json.dumps(ordem_lista),
+                    "atualizado_em": datetime.now().isoformat(),
+                    "atualizado_por": usuario_nome or "",
+                }
+                if existentes:
+                    return supa_update("producao_prioridade", linha_key, dados, id_col="linha")
+                return supa_insert("producao_prioridade", dados) is not None
+
+            def _ordenar_fila(df_linha, ordem_manual):
+                """Prioridade manual salva primeiro (na ordem salva); resto por data de emissão."""
+                df_linha = df_linha.copy()
+                df_linha['_DATA_ORD'] = pd.to_datetime(df_linha['DataEmissao'], errors='coerce')
+                df_linha = df_linha.sort_values('_DATA_ORD', na_position='last')
+                if not ordem_manual:
+                    return df_linha
+                ordem_pos = {pid: i for i, pid in enumerate(ordem_manual)}
+                df_com_ordem = df_linha[df_linha['PEDIDO_ITEM_ID'].isin(ordem_pos)].copy()
+                df_com_ordem['_ORD'] = df_com_ordem['PEDIDO_ITEM_ID'].map(ordem_pos)
+                df_com_ordem = df_com_ordem.sort_values('_ORD')
+                df_sem_ordem = df_linha[~df_linha['PEDIDO_ITEM_ID'].isin(ordem_pos)]
+                return pd.concat([df_com_ordem, df_sem_ordem], ignore_index=True)
+
+            _prioridades_salvas = carregar_prioridades()
             _hoje = date.today()
+            _partes_calculadas = []
+            _filas_por_linha = {}
 
-            def _calc_data(dias):
-                if dias is None or pd.isna(dias):
-                    return None
-                return adicionar_dias_uteis(_hoje, int(dias))
+            for _linha_key_iter in [k for k in _df_merge['LINHA_KEY'].dropna().unique()]:
+                _df_linha = _df_merge[_df_merge['LINHA_KEY'] == _linha_key_iter].copy()
+                _cap_linha = _df_linha['CAPACIDADE_DIA'].iloc[0]
+                _ordem_salva = _prioridades_salvas.get(_linha_key_iter, [])
+                _df_linha = _ordenar_fila(_df_linha, _ordem_salva)
 
-            _df_merge['DATA_PREVISTA'] = _df_merge['DIAS_PRODUCAO'].apply(_calc_data)
+                _acumulado, _dias_lista, _data_lista = 0.0, [], []
+                _func_data = adicionar_dias_semana if _linha_key_iter in LINHAS_APENAS_DIAS_SEMANA else adicionar_dias_uteis
+                for _, _linha_row in _df_linha.iterrows():
+                    _cx_item = _linha_row['CAIXAS_NECESSARIAS']
+                    _acumulado += _cx_item if pd.notna(_cx_item) else 0
+                    _dias = math.ceil(_acumulado / _cap_linha) if pd.notna(_cap_linha) and _cap_linha > 0 else None
+                    _dias_lista.append(_dias)
+                    _data_lista.append(_func_data(_hoje, _dias) if _dias is not None else None)
+                _df_linha['DIAS_PRODUCAO'] = _dias_lista
+                _df_linha['DATA_PREVISTA'] = _data_lista
+                _filas_por_linha[_linha_key_iter] = _df_linha
+                _partes_calculadas.append(_df_linha)
+
+            _df_sem_linha = _df_merge[_df_merge['LINHA_KEY'].isna()].copy()
+            _df_sem_linha['DIAS_PRODUCAO'] = None
+            _df_sem_linha['DATA_PREVISTA'] = None
+            _partes_calculadas.append(_df_sem_linha)
+
+            _df_merge = pd.concat(_partes_calculadas, ignore_index=True) if _partes_calculadas else _df_merge
             _df_merge['PREVISAO_FORMATADA'] = _df_merge.apply(
                 lambda r: f"{r['DATA_PREVISTA'].strftime('%d/%m/%Y')} ({int(r['DIAS_PRODUCAO'])} dias)"
                 if r['DATA_PREVISTA'] is not None else "SEM CAPACIDADE",
@@ -5211,6 +5461,47 @@ elif menu == "Pedidos Pendentes":
                 'VALOR_TOTAL':        'Faturamento',
             })
             st.dataframe(_df_show, use_container_width=True, height=380)
+
+            # ── Fila de Priorização por Produto ────────────────────────
+            st.markdown("---")
+            st.markdown("**🔀 Fila de Priorização por Produto**")
+            st.caption("Use as setas para mudar a ordem de produção. A previsão de todos os pedidos abaixo recalcula na hora.")
+
+            _nome_usuario_fila = st.session_state.get('usuario_nome', '')
+
+            for _linha_key_ui, _df_linha_ui in _filas_por_linha.items():
+                _nome_linha_ui = TAXAS_PRODUCAO[_linha_key_ui]['nome']
+                with st.expander(f"{_nome_linha_ui} — {len(_df_linha_ui)} pedido(s) na fila"):
+                    _ids_ordem = _df_linha_ui['PEDIDO_ITEM_ID'].tolist()
+                    _cab1, _cab2, _cab3, _cab4, _cab5, _cab6 = st.columns([0.5, 0.5, 3, 1.2, 1, 1.5])
+                    _cab3.markdown("**Cliente / Pedido**")
+                    _cab4.markdown("**Caixas**")
+                    _cab5.markdown("**Dias**")
+                    _cab6.markdown("**Previsão**")
+                    for _pos, (_, _item) in enumerate(_df_linha_ui.iterrows()):
+                        _c1, _c2, _c3, _c4, _c5, _c6 = st.columns([0.5, 0.5, 3, 1.2, 1, 1.5])
+                        _item_id = _item['PEDIDO_ITEM_ID']
+                        with _c1:
+                            if st.button("↑", key=f"fila_up_{_linha_key_ui}_{_item_id}", disabled=(_pos == 0)):
+                                _nova_ordem = _ids_ordem.copy()
+                                _nova_ordem[_pos - 1], _nova_ordem[_pos] = _nova_ordem[_pos], _nova_ordem[_pos - 1]
+                                salvar_prioridade(_linha_key_ui, _nova_ordem, _nome_usuario_fila)
+                                st.rerun()
+                        with _c2:
+                            if st.button("↓", key=f"fila_down_{_linha_key_ui}_{_item_id}", disabled=(_pos == len(_ids_ordem) - 1)):
+                                _nova_ordem = _ids_ordem.copy()
+                                _nova_ordem[_pos + 1], _nova_ordem[_pos] = _nova_ordem[_pos], _nova_ordem[_pos + 1]
+                                salvar_prioridade(_linha_key_ui, _nova_ordem, _nome_usuario_fila)
+                                st.rerun()
+                        with _c3:
+                            st.write(f"**{_pos + 1}.** {_item.get('Cliente', '')} — Pedido {_item.get('NumeroPedido', '')}")
+                        with _c4:
+                            st.write(f"{_item.get('CAIXAS_NECESSARIAS') or '—'}")
+                        with _c5:
+                            st.write(f"{_item.get('DIAS_PRODUCAO') or '—'}")
+                        with _c6:
+                            _dp_ui = _item.get('DATA_PREVISTA')
+                            st.write(_dp_ui.strftime('%d/%m/%Y') if _dp_ui is not None else '—')
 
             # ── Downloads ───────────────────────────────────────────────
             def _gerar_relatorio_previsao(df_merge, df_prod_prev, cx_col, preco_col, desc_col):
@@ -8580,7 +8871,7 @@ elif menu == "Consulta Clientes":
 
     # ── Campo de código do produto ────────────────────────────────────────
     _codigos_lista = [''] + sorted(_df_tabela[_cod_col].dropna().astype(str).unique().tolist())
-    _cc1, _cc2, _cc3 = st.columns([1, 2, 1])
+    _cc1, _cc2, _cc3, _cc4 = st.columns([1, 2, 1, 1])
     with _cc1:
         _cod_sel = st.selectbox("Código do Produto", _codigos_lista,
                                 key="cc_codigo", label_visibility="visible")
@@ -8616,6 +8907,15 @@ elif menu == "Consulta Clientes":
             if _gv and _gv.lower() not in ('nan', '0', '0.0', ''):
                 _gramatura = _gv
 
+        # Caixa de Embarque
+        _cx_col = next((c for c in _cols
+                        if 'CX_EMB' in c or 'CAIXA' in c or 'EMBARQUE' in c), None)
+        _cx_embarque = ''
+        if _cx_col:
+            _cxv = str(_prod_row.get(_cx_col, '')).strip()
+            if _cxv and _cxv.lower() not in ('nan', ''):
+                _cx_embarque = _cxv
+
         with _cc2:
             st.text_input("Descrição", value=_descricao, disabled=True,
                           key=f"cc_desc_{_cod_sel}")
@@ -8623,6 +8923,10 @@ elif menu == "Consulta Clientes":
         with _cc3:
             st.text_input("Gramatura", value=_gramatura, disabled=True,
                           key=f"cc_gram_{_cod_sel}")
+
+        with _cc4:
+            st.text_input("Caixa de Embarque", value=_cx_embarque, disabled=True,
+                          key=f"cc_cx_{_cod_sel}")
 
         # Preço base da tabela
         try:
@@ -9586,6 +9890,234 @@ elif menu == "__erp_todos_pedidos__":
                             )
                         except Exception:
                             st.caption("PDF indisponível")
+
+# ══════════════════════════════════════════════════════════════════════════
+# MÓDULO COMISSÕES — consolidado de comissão a pagar (PIX) por representante
+# Módulo independente: não lê nem grava em nenhuma outra planilha/tabela.
+# Fontes: COMISSOES_VENDAS_*.xlsx, BOLETOS_EMITIDOS_*.xlsx, BOLETOS_PAGOS_*.xlsx
+# (lidas do GitHub; o sufixo de data no nome do arquivo é ignorado).
+# ══════════════════════════════════════════════════════════════════════════
+elif menu == "Comissões":
+    import re as _com_re
+
+    st.markdown('<h2 style="color:#4A7BC8;font-weight:700;margin-bottom:4px;'
+                'font-size:1.35rem;">💵 Comissões — Consolidado a Pagar</h2>',
+                unsafe_allow_html=True)
+    st.caption("Consolidação de comissões liberadas para pagamento via PIX. "
+               "Não integra com banco — apenas confere e totaliza.")
+
+    # Representantes com liberação por FATURADO (contam no faturamento,
+    # independente do boleto estar pago). Todos os demais só liberam na
+    # liquidação do boleto correspondente.
+    _COM_REPS_FATURADO = {"MARIO JR", "DANILO", "MALCA"}
+
+    def _com_nome_base(nome):
+        """'MARIO JR - PE/PB/RN' -> 'MARIO JR'"""
+        if not isinstance(nome, str) or not nome.strip():
+            return ""
+        return nome.split(" - ")[0].strip().upper()
+
+    def _com_chave_documento(doc):
+        """Documento da comissão (ex.: 6793.0) -> chave de 6 dígitos ('006793')."""
+        if pd.isna(doc):
+            return None
+        try:
+            s = str(int(round(float(doc))))
+        except (ValueError, TypeError):
+            return None
+        return s[-6:].zfill(6)
+
+    def _com_parse_titulo(valor):
+        """Nº Doc do boleto (float 1006793.1 ou str '01006793.1BPBP') ->
+        (chave de 6 dígitos, nº da parcela)."""
+        if pd.isna(valor):
+            return None, None
+        if isinstance(valor, float):
+            s = f"{valor:.1f}"
+        else:
+            s = str(valor).strip()
+        m = _com_re.match(r"^0*(\d+)\.(\d)", s)
+        if not m:
+            return None, None
+        base, parcela = m.group(1), m.group(2)
+        return base[-6:].zfill(6), parcela
+
+    @st.cache_data(ttl=3600)
+    def _com_carregar(url_com, url_emit, url_pago):
+        erros = []
+        df_com = carregar_planilha_github(url_com) if url_com else None
+        df_emit = carregar_planilha_github(url_emit) if url_emit else None
+        df_pago = carregar_planilha_github(url_pago) if url_pago else None
+        if df_com is None or df_com.empty:
+            erros.append("Não consegui carregar a planilha de comissões (COMISSOES_VENDAS).")
+        if (df_emit is None or df_emit.empty) and (df_pago is None or df_pago.empty):
+            erros.append("Não consegui carregar nenhuma planilha de boletos (EMITIDOS/PAGOS).")
+        if erros:
+            return None, None, erros
+
+        # ── Comissões: agrupa por Documento+Vendedor (uma venda tem várias
+        # linhas de produto) e calcula a chave de vínculo com o boleto ──
+        com = df_com.dropna(subset=["Documento"]).copy()
+        com["_chave"] = com["Documento"].apply(_com_chave_documento)
+        com["_rep_base"] = com["Vendedor"].apply(_com_nome_base)
+        com_agg = (com.groupby(["Documento", "Vendedor", "_rep_base", "_chave"],
+                                dropna=False)
+                      .agg(DtVenda=("DtVenda", "first"),
+                           Cliente=("Cliente", "first"),
+                           ValorComissao=("Vl Comissão", "sum"))
+                      .reset_index())
+
+        # ── Boletos: junta emitidos + pagos, um registro por parcela (chave+parcela) ──
+        partes = [d for d in (df_emit, df_pago) if d is not None and not d.empty]
+        bol = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame(
+            columns=["Nº Doc", "Funcionário", "Dt.Emissão", "Dt.Baixa", "Vr.Líquido"])
+        if not bol.empty:
+            bol[["_chave", "_parcela"]] = bol["Nº Doc"].apply(
+                lambda v: pd.Series(_com_parse_titulo(v)))
+            bol = bol.dropna(subset=["_chave", "_parcela"])
+            bol_agg = (bol.sort_values("Dt.Baixa", na_position="last")
+                          .groupby(["_chave", "_parcela"], dropna=False)
+                          .agg(Funcionario=("Funcionário", "first"),
+                               DtEmissao=("Dt.Emissão", "first"),
+                               DtBaixa=("Dt.Baixa", "first"),
+                               VrLiquido=("Vr.Líquido", "first"))
+                          .reset_index())
+        else:
+            bol_agg = pd.DataFrame(columns=["_chave", "_parcela", "Funcionario",
+                                             "DtEmissao", "DtBaixa", "VrLiquido"])
+        return com_agg, bol_agg, []
+
+    _com_urls = listar_planilhas_github()
+    _url_com = (_com_urls.get("comissoes_vendas") or {}).get("url")
+    _url_emit = (_com_urls.get("boletos_emitidos") or {}).get("url")
+    _url_pago = (_com_urls.get("boletos_pagos") or {}).get("url")
+
+    if not _url_com:
+        st.error("❌ Não encontrei nenhum arquivo começando com **COMISSOES_VENDAS** "
+                  "na pasta de dados do GitHub.")
+        st.stop()
+    if not _url_emit and not _url_pago:
+        st.error("❌ Não encontrei arquivos **BOLETOS_EMITIDOS** nem **BOLETOS_PAGOS** "
+                  "na pasta de dados do GitHub.")
+        st.stop()
+
+    _com_agg, _bol_agg, _com_erros = _com_carregar(_url_com, _url_emit, _url_pago)
+    if _com_erros:
+        for _e in _com_erros:
+            st.error(f"❌ {_e}")
+        st.stop()
+
+    # ── Reconciliação: liga cada comissão às parcelas do boleto, rateia o
+    # valor entre elas e aplica a regra de liberação de cada representante ──
+    @st.cache_data(ttl=3600)
+    def _com_reconciliar(com_agg, bol_agg):
+        linhas = []
+        bol_por_chave = {k: v for k, v in bol_agg.groupby("_chave")} if not bol_agg.empty else {}
+        for _, row in com_agg.iterrows():
+            chave = row["_chave"]
+            parcelas = bol_por_chave.get(chave)
+            rep_base = row["_rep_base"]
+            por_faturado = rep_base in _COM_REPS_FATURADO
+            valor_total_cent = int(round(row["ValorComissao"] * 100))
+
+            if parcelas is None or parcelas.empty:
+                # Nenhum boleto localizado para este documento
+                linhas.append({
+                    "Documento": row["Documento"], "Vendedor": row["Vendedor"],
+                    "RepBase": rep_base, "Cliente": row["Cliente"],
+                    "Parcela": None, "ValorComissao": row["ValorComissao"],
+                    "DtBase": row["DtVenda"] if por_faturado else pd.NaT,
+                    "Liberado": bool(por_faturado),
+                    "Divergencia": "BOLETO NÃO LOCALIZADO",
+                })
+                continue
+
+            n = len(parcelas)
+            base_cent = valor_total_cent // n
+            resto = valor_total_cent - base_cent * n
+            for i, (_, p) in enumerate(parcelas.sort_values("_parcela").iterrows()):
+                valor_parcela = (base_cent + (resto if i == n - 1 else 0)) / 100.0
+                if por_faturado:
+                    dt_base, liberado = row["DtVenda"], True
+                else:
+                    dt_base = p["DtBaixa"]
+                    liberado = pd.notna(p["DtBaixa"])
+                divergencia = None
+                if not por_faturado and not liberado:
+                    divergencia = "AGUARDANDO LIQUIDAÇÃO DO BOLETO"
+                linhas.append({
+                    "Documento": row["Documento"], "Vendedor": row["Vendedor"],
+                    "RepBase": rep_base, "Cliente": row["Cliente"],
+                    "Parcela": p["_parcela"], "ValorComissao": valor_parcela,
+                    "DtBase": dt_base, "Liberado": liberado,
+                    "Divergencia": divergencia,
+                })
+        return pd.DataFrame(linhas)
+
+    _com_recon = _com_reconciliar(_com_agg, _bol_agg)
+
+    # ── Filtros ───────────────────────────────────────────────────────────
+    with st.expander("⚙️ Filtros do Módulo", expanded=True):
+        _c1, _c2, _c3 = st.columns([1, 1, 1.4])
+        with _c1:
+            _com_de = st.date_input("De", value=datetime.today().replace(day=1),
+                                     key="com_de")
+        with _c2:
+            _com_ate = st.date_input("Até", value=datetime.today(), key="com_ate")
+        with _c3:
+            _com_reps = ["Todos"] + sorted(
+                [r for r in _com_recon["RepBase"].dropna().unique() if r])
+            _com_rep_sel = st.selectbox("Vendedor", _com_reps, key="com_rep")
+
+    _com_de_ts = pd.Timestamp(_com_de)
+    _com_ate_ts = pd.Timestamp(_com_ate) + pd.Timedelta(hours=23, minutes=59, seconds=59)
+
+    _df = _com_recon.copy()
+    if _com_rep_sel != "Todos":
+        _df = _df[_df["RepBase"] == _com_rep_sel]
+
+    _no_periodo = _df["DtBase"].notna() & _df["DtBase"].between(_com_de_ts, _com_ate_ts)
+    _df_liberado = _df[_df["Liberado"] & _no_periodo]
+    _df_pendente = _df[(~_df["Liberado"]) | (~_no_periodo & _df["Liberado"])]
+    _df_divergencia = _df[_df["Divergencia"].notna()]
+
+    # ── Cards de resumo ──────────────────────────────────────────────────
+    _tot_liberado = _df_liberado["ValorComissao"].sum()
+    _tot_pendente = _df[~_df["Liberado"]]["ValorComissao"].sum()
+    _qtd_diverg = _df_divergencia["Documento"].nunique()
+
+    _k1, _k2, _k3 = st.columns(3)
+    _k1.metric("💰 Total a pagar (PIX) no período", f"R$ {formatar_numero_br(_tot_liberado, 2)}")
+    _k2.metric("⏳ Comissão pendente (não liberada)", f"R$ {formatar_numero_br(_tot_pendente, 2)}")
+    _k3.metric("⚠️ Documentos com divergência", f"{_qtd_diverg}")
+
+    st.markdown("---")
+
+    # ── Consolidado por representante ───────────────────────────────────
+    st.markdown("#### Consolidado por representante")
+    if _df_liberado.empty:
+        st.info("Nenhuma comissão liberada para pagamento no período/filtro selecionado.")
+    else:
+        _resumo = (_df_liberado.groupby("Vendedor", dropna=False)["ValorComissao"]
+                   .sum().reset_index().sort_values("ValorComissao", ascending=False))
+        _resumo["Total a Pagar (PIX)"] = _resumo["ValorComissao"].apply(
+            lambda v: f"R$ {formatar_numero_br(v, 2)}")
+        st.dataframe(_resumo[["Vendedor", "Total a Pagar (PIX)"]],
+                     use_container_width=True, hide_index=True)
+
+    # ── Divergências ─────────────────────────────────────────────────────
+    st.markdown("#### Divergências para conferência")
+    if _df_divergencia.empty:
+        st.success("Nenhuma divergência encontrada no filtro atual.")
+    else:
+        _dv = _df_divergencia[["Documento", "Vendedor", "Cliente", "Parcela",
+                                "ValorComissao", "Divergencia"]].copy()
+        _dv["Documento"] = _dv["Documento"].apply(lambda x: f"{int(x)}" if pd.notna(x) else "")
+        _dv["ValorComissao"] = _dv["ValorComissao"].apply(
+            lambda v: f"R$ {formatar_numero_br(v, 2)}")
+        _dv.columns = ["Documento", "Vendedor", "Cliente", "Parcela",
+                       "Valor Comissão", "Motivo"]
+        st.dataframe(_dv, use_container_width=True, hide_index=True)
 
 st.markdown("""
 <hr style="border-color:#E9ECEF;margin-top:32px;margin-bottom:12px;">
